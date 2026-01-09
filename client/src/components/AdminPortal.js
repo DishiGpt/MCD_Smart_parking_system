@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle, IndianRupee, Car, BarChart3, Bell } from 'lucide-react';
+import { AlertTriangle, CheckCircle, IndianRupee, Car, BarChart3, Bell, X } from 'lucide-react';
 import axios from 'axios';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import Scanner from './Scanner';
 
 const AdminPortal = () => {
   const [stats, setStats] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [transactions, setTransactions] = useState([]);
-  const [parkingLots, setParkingLots] = useState([]);
+  const [showScanner, setShowScanner] = useState(false);
+  const [scannerMode, setScannerMode] = useState('ENTRY');
   
   const refreshData = async () => {
     try {
@@ -20,7 +22,8 @@ const AdminPortal = () => {
       setAlerts(alertsRes.data.alerts || []);
       setTransactions(transactionsRes.data.transactions || []);
       setStats(transactionsRes.data.stats || {});
-      setParkingLots(statusRes.data.parkingLots || []);
+      // eslint-disable-next-line no-unused-vars
+      const parkingLotStatus = statusRes.data.parkingLots || [];
     } catch (error) {
       console.error('Error fetching admin data:', error);
     }
@@ -54,10 +57,61 @@ const AdminPortal = () => {
   return (
     <div className="min-h-screen bg-slate-100 p-6">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-          <BarChart3 className="text-blue-600" />
-          MCD Enforcement Dashboard
-        </h1>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <BarChart3 className="text-blue-600" />
+            MCD Enforcement Dashboard
+          </h1>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setScannerMode('ENTRY');
+                setShowScanner(true);
+              }}
+              className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition"
+            >
+              + Entry Scanner
+            </button>
+            <button
+              onClick={() => {
+                setScannerMode('EXIT');
+                setShowScanner(true);
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition"
+            >
+              + Exit Scanner
+            </button>
+          </div>
+        </div>
+
+        {/* Scanner Modal */}
+        {showScanner && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="sticky top-0 bg-gray-50 border-b flex justify-between items-center p-4">
+                <h2 className="text-lg font-bold text-gray-800">
+                  {scannerMode === 'ENTRY' ? 'Entry Scanner' : 'Exit Scanner'}
+                </h2>
+                <button
+                  onClick={() => setShowScanner(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              <div className="p-4">
+                <Scanner
+                  mode={scannerMode}
+                  onSuccess={() => {
+                    refreshData();
+                    // Auto-close after success
+                    setTimeout(() => setShowScanner(false), 2000);
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

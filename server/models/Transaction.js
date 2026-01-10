@@ -68,12 +68,57 @@ const transactionSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  paymentMode: {
+    type: String,
+    enum: ['CASH', 'UPI', 'FASTAG', 'PENDING'],
+    default: 'PENDING'
+  },
+  receiptGenerated: {
+    type: Boolean,
+    default: false
+  },
+  receiptNumber: {
+    type: String,
+    default: null
+  },
+  guardSessionId: {
+    type: String,
+    default: null
+  },
+  riskFlag: {
+    type: String,
+    enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'],
+    default: 'LOW'
+  },
   flagged: {
     type: Boolean,
     default: false
   }
 }, {
   timestamps: true
+});
+
+// Auto-generate receipt number on payment
+transactionSchema.pre('save', function(next) {
+  if (this.paymentMode !== 'PENDING' && !this.receiptNumber) {
+    const timestamp = Date.now().toString(36).toUpperCase();
+    const random = Math.random().toString(36).substring(2, 5).toUpperCase();
+    this.receiptNumber = `RCP-${timestamp}-${random}`;
+    this.receiptGenerated = true;
+  }
+  
+  // Auto-calculate risk flag for manual entries
+  if (this.isManualEntry || this.exitMethod === 'MANUAL_OVERRIDE') {
+    if (this.paymentMode === 'CASH') {
+      this.riskFlag = 'HIGH';
+    } else if (this.paymentMode === 'PENDING') {
+      this.riskFlag = 'CRITICAL';
+    } else {
+      this.riskFlag = 'MEDIUM';
+    }
+  }
+  
+  next();
 });
 
 module.exports = mongoose.model('Transaction', transactionSchema);

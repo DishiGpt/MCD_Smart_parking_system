@@ -2,8 +2,15 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Webcam from 'react-webcam';
 import Tesseract from 'tesseract.js';
 import { toast } from 'react-toastify';
+import GuardAuth from './GuardAuth';
 
 const GuardConsole = () => {
+  // Session Management
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [sessionData, setSessionData] = useState(null);
+  const [showEndShiftModal, setShowEndShiftModal] = useState(false);
+  const [closingCash, setClosingCash] = useState('');
+  
   const webcamRef = useRef(null);
   const [isScanning, setIsScanning] = useState(true);
   const [mode, setMode] = useState('ENTRY');
@@ -15,8 +22,6 @@ const GuardConsole = () => {
   const [manualExitVehicle, setManualExitVehicle] = useState('');
   const [manualReason, setManualReason] = useState('CAMERA_GLITCH');
   const [manualExitReason, setManualExitReason] = useState('CAMERA_GLITCH');
-  const [guardName] = useState('Guard-' + Math.random().toString(36).substr(2, 5).toUpperCase());
-  const [parkingLot] = useState('Main Gate Parking');
   const [loading, setLoading] = useState(false);
   const scanIntervalRef = useRef(null);
 
@@ -25,6 +30,52 @@ const GuardConsole = () => {
   const [manualEntryEnabled, setManualEntryEnabled] = useState(false);
 
   const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
+  // Extract session data (with defaults for hooks)
+  const guardName = sessionData?.guardId || 'Unknown';
+  const parkingLot = sessionData?.parkingLot || 'Main Gate Parking';
+  const sessionId = sessionData?.sessionId;
+
+  // Handle successful login
+  const handleLoginSuccess = (data) => {
+    setSessionData(data);
+    setIsAuthenticated(true);
+    // Save to localStorage for persistence across reloads
+    localStorage.setItem('guardSession', JSON.stringify(data));
+    toast.success(`Shift started! Session ID: ${data.sessionId}`);
+  };
+
+  // Restore session on component mount
+  useEffect(() => {
+    const restoreSession = async () => {
+      const savedSession = localStorage.getItem('guardSession');
+      if (savedSession) {
+        try {
+          const parsedSession = JSON.parse(savedSession);
+          
+          // Validate session is still active with backend
+          const response = await fetch(`${API_BASE}/guard/active-session/${parsedSession.guardId}`);
+          const data = await response.json();
+          
+          if (data.success && data.session && data.session.status === 'ACTIVE') {
+            // Session is still active, restore it
+            setSessionData(parsedSession);
+            setIsAuthenticated(true);
+            toast.success('Session restored! Welcome back.', { autoClose: 3000 });
+          } else {
+            // Session no longer active, clear localStorage
+            localStorage.removeItem('guardSession');
+            toast.info('Previous session has ended. Please login again.');
+          }
+        } catch (error) {
+          console.error('Error restoring session:', error);
+          localStorage.removeItem('guardSession');
+        }
+      }
+    };
+    
+    restoreSession();
+  }, [API_BASE]);
 
   const fetchScanHistory = useCallback(async () => {
     try {
@@ -82,19 +133,25 @@ const GuardConsole = () => {
 
     try {
       const endpoint = mode === 'ENTRY' ? '/entry' : '/exit';
+      const body = mode === 'ENTRY' 
+        ? { vehicleNumber: plateNumber, parkingLotName: parkingLot, sessionId }
+        : { vehicleNumber: plateNumber, paymentMode: 'FASTAG', sessionId };
+
       const response = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          vehicleNumber: plateNumber,
-          parkingLotName: parkingLot
-        })
+        body: JSON.stringify(body)
       });
 
       const data = await response.json();
 
       if (data.success) {
-        toast.success(`Vehicle ${plateNumber} Logged`);
+        if (mode === 'EXIT') {
+          const fee = data.transaction?.fee || 0;
+          toast.success(`Vehicle ${plateNumber} Exit - Fee: ₹${fee}`);
+        } else {
+          toast.success(`Vehicle ${plateNumber} Entry Logged`);
+        }
         setTimeout(() => fetchScanHistory(), 1000);
       } else {
         toast.error(data.message);
@@ -185,7 +242,8 @@ const GuardConsole = () => {
           parkingLotName: parkingLot,
           reason: manualReason,
           guardName: guardName,
-          cameraStatus: cameraStatus
+          cameraStatus: cameraStatus,
+          sessionId
         })
       });
 
@@ -225,14 +283,17 @@ const GuardConsole = () => {
           parkingLotName: parkingLot,
           reason: manualExitReason,
           guardName: guardName,
-          cameraStatus: cameraStatus
+          cameraStatus: cameraStatus,
+          paymentMode: 'FASTAG',
+          sessionId
         })
       });
 
       const data = await response.json();
 
       if (data.success) {
-        toast.success(`Manual Exit: ${manualExitVehicle.toUpperCase()} - Fee: Rs.${data.transaction?.fee || 0}`);
+        const fee = data.transaction?.fee || data.fee || 0;
+        toast.success(`Manual Exit: ${manualExitVehicle.toUpperCase()} - Fee: ₹${fee}`);
         setManualExitVehicle('');
         setManualExitReason('CAMERA_GLITCH');
         setShowManualExitModal(false);
@@ -246,6 +307,63 @@ const GuardConsole = () => {
       setLoading(false);
     }
   };
+
+  const handleEndShift = async (e) => {
+    e.preventDefault();
+    
+    if (!closingCash || parseFloat(closingCash) < 0) {
+      toast.error('Please enter valid closing cash amount');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE}/guard/end-shift`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          closingCash: parseFloat(closingCash)
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        const settlement = data.settlement;
+        const shortage = settlement.cashShortage || 0;
+        
+        if (shortage > 0) {
+          toast.warning(`Shift ended. Cash shortage: ₹${shortage}`, { autoClose: 8000 });
+        } else if (shortage < 0) {
+          toast.info(`Shift ended. Cash surplus: ₹${Math.abs(shortage)}`, { autoClose: 8000 });
+        } else {
+          toast.success('Shift ended. Cash reconciliation perfect!', { autoClose: 5000 });
+        }
+        
+        // Logout after short delay
+        setTimeout(() => {
+          setIsAuthenticated(false);
+          setSessionData(null);
+          setShowEndShiftModal(false);
+          // Clear localStorage
+          localStorage.removeItem('guardSession');
+        }, 2000);
+      } else {
+        toast.error(data.message);
+      }
+    } catch (error) {
+      toast.error(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Show GuardAuth if not authenticated
+  if (!isAuthenticated) {
+    return <GuardAuth onLoginSuccess={handleLoginSuccess} />;
+  }
 
   return (
     <div className="w-full h-screen bg-gray-900 text-white flex flex-col">
@@ -264,6 +382,12 @@ const GuardConsole = () => {
               <p className="text-xs text-gray-300">Parking Lot</p>
               <p className="font-mono text-lg font-bold">{parkingLot}</p>
             </div>
+            <button
+              onClick={() => setShowEndShiftModal(true)}
+              className="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-lg font-bold transition-all shadow-lg"
+            >
+              END SHIFT
+            </button>
           </div>
         </div>
       </div>
@@ -565,6 +689,76 @@ const GuardConsole = () => {
 
               <p className="text-xs text-yellow-400 text-center mt-4">
                 This exit will be flagged in the system for admin review.
+              </p>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showEndShiftModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-xl border-2 border-red-500 shadow-2xl max-w-md w-full p-6">
+            <h2 className="text-2xl font-bold text-red-500 mb-4">END SHIFT</h2>
+
+            <form onSubmit={handleEndShift} className="space-y-4">
+              <div className="bg-gray-800 px-4 py-3 rounded-lg space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Guard ID:</span>
+                  <span className="font-mono font-bold">{guardName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Session ID:</span>
+                  <span className="font-mono text-xs">{sessionId}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Opening Cash:</span>
+                  <span className="font-bold text-green-400">₹{sessionData?.openingCash || 0}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-300 mb-2">Closing Cash Balance</label>
+                <input
+                  type="number"
+                  value={closingCash}
+                  onChange={(e) => setClosingCash(e.target.value)}
+                  placeholder="Enter actual cash in drawer"
+                  step="0.01"
+                  min="0"
+                  className="w-full bg-gray-800 border-2 border-gray-600 text-white px-4 py-3 rounded-lg font-mono text-lg focus:outline-none focus:border-red-500 placeholder-gray-500"
+                  disabled={loading}
+                />
+              </div>
+
+              <div className="bg-yellow-900/20 border-l-4 border-yellow-500 px-4 py-3 rounded">
+                <p className="text-yellow-400 text-sm">
+                  ⚠️ System will auto-calculate expected cash and detect any shortage/surplus
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEndShiftModal(false);
+                    setClosingCash('');
+                  }}
+                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 rounded-lg transition-colors"
+                  disabled={loading}
+                >
+                  CANCEL
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition-colors disabled:opacity-50"
+                  disabled={loading || !closingCash}
+                >
+                  {loading ? 'PROCESSING...' : 'END SHIFT'}
+                </button>
+              </div>
+
+              <p className="text-xs text-red-400 text-center mt-4">
+                ⚠️ This will log you out and close your session
               </p>
             </form>
           </div>

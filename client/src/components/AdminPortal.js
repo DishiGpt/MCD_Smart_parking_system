@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle, IndianRupee, Car, BarChart3, Bell, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle, IndianRupee, Car, BarChart3, Bell, X, Shield } from 'lucide-react';
 import axios from 'axios';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import Scanner from './Scanner';
+import GuardAuditPanel from './GuardAuditPanel';
 
 const AdminPortal = () => {
   const [stats, setStats] = useState(null);
@@ -10,6 +11,7 @@ const AdminPortal = () => {
   const [transactions, setTransactions] = useState([]);
   const [showScanner, setShowScanner] = useState(false);
   const [scannerMode, setScannerMode] = useState('ENTRY');
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'guards'
   
   const refreshData = async () => {
     try {
@@ -63,6 +65,37 @@ const AdminPortal = () => {
             MCD Enforcement Dashboard
           </h1>
         </div>
+
+        {/* Tab Navigation */}
+        <div className="mb-6 bg-white rounded-lg shadow-sm border border-slate-200 p-1 flex gap-2">
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`flex-1 px-4 py-2 rounded-md font-semibold transition-all flex items-center justify-center gap-2 ${
+              activeTab === 'dashboard'
+                ? 'bg-blue-600 text-white'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <BarChart3 size={18} />
+            Dashboard
+          </button>
+          <button
+            onClick={() => setActiveTab('guards')}
+            className={`flex-1 px-4 py-2 rounded-md font-semibold transition-all flex items-center justify-center gap-2 ${
+              activeTab === 'guards'
+                ? 'bg-blue-600 text-white'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Shield size={18} />
+            Guard Audit
+          </button>
+        </div>
+
+        {activeTab === 'guards' ? (
+          <GuardAuditPanel />
+        ) : (
+          <>
 
         {/* Scanner Modal */}
         {showScanner && (
@@ -250,6 +283,8 @@ const AdminPortal = () => {
             </div>
           </div>
         </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -50,6 +50,24 @@ const transactionSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  exitMethod: {
+    type: String,
+    enum: ['ANPR', 'MANUAL_OVERRIDE'],
+    default: 'ANPR'
+  },
+  manualExitBy: {
+    type: String,
+    default: null
+  },
+  manualExitReason: {
+    type: String,
+    enum: ['CAMERA_GLITCH', 'SERVER_TIMEOUT', 'SYSTEM_FAILURE', 'OTHER'],
+    default: undefined
+  },
+  duration: {
+    type: Number,
+    default: 0
+  },
   flagged: {
     type: Boolean,
     default: false

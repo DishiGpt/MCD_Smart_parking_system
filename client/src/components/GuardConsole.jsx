@@ -10,8 +10,11 @@ const GuardConsole = () => {
   const [lastScanned, setLastScanned] = useState(null);
   const [scannedPlates, setScannedPlates] = useState([]);
   const [showManualModal, setShowManualModal] = useState(false);
+  const [showManualExitModal, setShowManualExitModal] = useState(false);
   const [manualVehicle, setManualVehicle] = useState('');
+  const [manualExitVehicle, setManualExitVehicle] = useState('');
   const [manualReason, setManualReason] = useState('CAMERA_GLITCH');
+  const [manualExitReason, setManualExitReason] = useState('CAMERA_GLITCH');
   const [guardName] = useState('Guard-' + Math.random().toString(36).substr(2, 5).toUpperCase());
   const [parkingLot] = useState('Main Gate Parking');
   const [loading, setLoading] = useState(false);
@@ -156,6 +159,14 @@ const GuardConsole = () => {
     setShowManualModal(true);
   };
 
+  const handleManualExitClick = () => {
+    if (!manualEntryEnabled) {
+      toast.error('Manual exit locked. Camera system is operational.');
+      return;
+    }
+    setShowManualExitModal(true);
+  };
+
   const handleManualEntry = async (e) => {
     e.preventDefault();
     if (!manualVehicle.trim()) {
@@ -185,6 +196,46 @@ const GuardConsole = () => {
         setManualVehicle('');
         setManualReason('CAMERA_GLITCH');
         setShowManualModal(false);
+        setTimeout(() => fetchScanHistory(), 1000);
+      } else {
+        toast.error(data.message);
+      }
+    } catch (error) {
+      toast.error(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleManualExit = async (e) => {
+    e.preventDefault();
+    if (!manualExitVehicle.trim()) {
+      toast.warning('Please enter a vehicle number');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE}/manual-exit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vehicleNumber: manualExitVehicle.toUpperCase(),
+          parkingLotName: parkingLot,
+          reason: manualExitReason,
+          guardName: guardName,
+          cameraStatus: cameraStatus
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(`Manual Exit: ${manualExitVehicle.toUpperCase()} - Fee: Rs.${data.transaction?.fee || 0}`);
+        setManualExitVehicle('');
+        setManualExitReason('CAMERA_GLITCH');
+        setShowManualExitModal(false);
         setTimeout(() => fetchScanHistory(), 1000);
       } else {
         toast.error(data.message);
@@ -311,27 +362,51 @@ const GuardConsole = () => {
             </div>
           </div>
 
-          <button
-            onClick={handleManualEntryClick}
-            disabled={!manualEntryEnabled}
-            className={`w-full font-bold py-4 rounded-lg transition-all text-lg shadow-lg border-2 relative ${
-              manualEntryEnabled
-                ? 'bg-red-600 hover:bg-red-700 text-white border-red-500 cursor-pointer'
-                : 'bg-gray-700 text-gray-500 border-gray-600 cursor-not-allowed opacity-60'
-            }`}
-          >
-            {manualEntryEnabled ? (
-              <>
-                MANUAL ENTRY<br />
-                <span className="text-xs text-gray-200">(Camera Failed - Enabled)</span>
-              </>
-            ) : (
-              <>
-                MANUAL ENTRY LOCKED<br />
-                <span className="text-xs text-gray-400">(Camera Operational)</span>
-              </>
-            )}
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={handleManualEntryClick}
+              disabled={!manualEntryEnabled}
+              className={`font-bold py-4 rounded-lg transition-all text-sm shadow-lg border-2 ${
+                manualEntryEnabled
+                  ? 'bg-red-600 hover:bg-red-700 text-white border-red-500 cursor-pointer'
+                  : 'bg-gray-700 text-gray-500 border-gray-600 cursor-not-allowed opacity-60'
+              }`}
+            >
+              {manualEntryEnabled ? (
+                <>
+                  MANUAL ENTRY<br />
+                  <span className="text-xs text-gray-200">(Enabled)</span>
+                </>
+              ) : (
+                <>
+                  ENTRY LOCKED<br />
+                  <span className="text-xs text-gray-400">(Camera OK)</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleManualExitClick}
+              disabled={!manualEntryEnabled}
+              className={`font-bold py-4 rounded-lg transition-all text-sm shadow-lg border-2 ${
+                manualEntryEnabled
+                  ? 'bg-orange-600 hover:bg-orange-700 text-white border-orange-500 cursor-pointer'
+                  : 'bg-gray-700 text-gray-500 border-gray-600 cursor-not-allowed opacity-60'
+              }`}
+            >
+              {manualEntryEnabled ? (
+                <>
+                  MANUAL EXIT<br />
+                  <span className="text-xs text-gray-200">(Enabled)</span>
+                </>
+              ) : (
+                <>
+                  EXIT LOCKED<br />
+                  <span className="text-xs text-gray-400">(Camera OK)</span>
+                </>
+              )}
+            </button>
+          </div>
 
           <div className="flex-1 bg-gray-800 rounded-lg border-2 border-gray-700 p-3 overflow-y-auto">
             <p className="text-xs text-gray-400 mb-2 sticky top-0 bg-gray-800">SCAN HISTORY</p>
@@ -422,6 +497,74 @@ const GuardConsole = () => {
 
               <p className="text-xs text-yellow-400 text-center mt-4">
                 This entry will be flagged in the system for admin review.
+              </p>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showManualExitModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-xl border-2 border-orange-500 shadow-2xl max-w-md w-full p-6">
+            <h2 className="text-2xl font-bold text-orange-500 mb-4">MANUAL EXIT FORM</h2>
+
+            <form onSubmit={handleManualExit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-300 mb-2">Vehicle Number Plate</label>
+                <input
+                  type="text"
+                  value={manualExitVehicle}
+                  onChange={(e) => setManualExitVehicle(e.target.value.toUpperCase())}
+                  placeholder="e.g., DL01AB1234"
+                  className="w-full bg-gray-800 border-2 border-gray-600 text-white px-4 py-3 rounded-lg font-mono text-lg focus:outline-none focus:border-orange-500 placeholder-gray-500"
+                  disabled={loading}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-300 mb-2">Failure Reason</label>
+                <select
+                  value={manualExitReason}
+                  onChange={(e) => setManualExitReason(e.target.value)}
+                  className="w-full bg-gray-800 border-2 border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:border-orange-500"
+                  disabled={loading}
+                >
+                  <option value="CAMERA_GLITCH">Camera Glitch</option>
+                  <option value="SERVER_TIMEOUT">Server Timeout</option>
+                  <option value="SYSTEM_FAILURE">System Failure</option>
+                  <option value="OTHER">Other</option>
+                </select>
+              </div>
+
+              <div className="bg-gray-800 px-4 py-2 rounded-lg">
+                <p className="text-xs text-gray-400">Exit By</p>
+                <p className="font-mono font-bold text-gray-300">{guardName}</p>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowManualExitModal(false);
+                    setManualExitVehicle('');
+                    setManualExitReason('CAMERA_GLITCH');
+                  }}
+                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 rounded-lg transition-colors"
+                  disabled={loading}
+                >
+                  CANCEL
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded-lg transition-colors disabled:opacity-50"
+                  disabled={loading || !manualExitVehicle.trim()}
+                >
+                  {loading ? 'PROCESSING...' : 'LOG EXIT'}
+                </button>
+              </div>
+
+              <p className="text-xs text-yellow-400 text-center mt-4">
+                This exit will be flagged in the system for admin review.
               </p>
             </form>
           </div>

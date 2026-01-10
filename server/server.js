@@ -340,6 +340,107 @@ app.post('/api/manual-entry', async (req, res) => {
   }
 });
 
+// 4.5 POST /api/manual-exit - Manual exit override for guard
+app.post('/api/manual-exit', async (req, res) => {
+  try {
+    const { vehicleNumber, parkingLotName, reason, guardName, cameraStatus } = req.body;
+    console.log('🚩 FLAGGED MANUAL EXIT:', vehicleNumber, '| Reason:', reason, '| By:', guardName, '| Camera:', cameraStatus);
+    
+    if (!vehicleNumber) {
+      return res.status(400).json({ success: false, message: 'Vehicle number is required' });
+    }
+
+    // 🔒 SECURITY: Validate that manual exit is justified
+    const validReasons = ['CAMERA_GLITCH', 'SERVER_TIMEOUT', 'SYSTEM_FAILURE', 'OTHER'];
+    if (!validReasons.includes(reason)) {
+      console.log('❌ Invalid reason:', reason);
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid failure reason. Manual exit rejected.' 
+      });
+    }
+
+    // 🔒 SECURITY: Verify camera status indicates actual failure
+    const allowedCameraStatuses = ['NO_CAMERA', 'PERMISSION_DENIED', 'STREAM_ERROR'];
+    if (cameraStatus && !allowedCameraStatuses.includes(cameraStatus)) {
+      console.log('❌ Camera operational, manual exit blocked. Status:', cameraStatus);
+      return res.status(403).json({ 
+        success: false, 
+        message: '🔒 Manual exit denied. Camera system is operational.',
+        cameraStatus: cameraStatus
+      });
+    }
+
+    const lotName = parkingLotName || 'Main Gate Parking';
+    
+    // Find active transaction
+    const transaction = await Transaction.findOne({
+      vehicleNumber: vehicleNumber.toUpperCase(),
+      status: 'ACTIVE'
+    });
+
+    if (!transaction) {
+      console.log('❌ No active transaction found for vehicle:', vehicleNumber);
+      return res.status(404).json({ 
+        success: false, 
+        message: 'No active parking session found for this vehicle' 
+      });
+    }
+
+    // Calculate parking duration and fee
+    const exitTime = new Date();
+    const durationMs = exitTime - transaction.entryTime;
+    const durationHours = Math.ceil(durationMs / (1000 * 60 * 60));
+    
+    const parkingLot = await ParkingLot.findOne({ name: transaction.parkingLot });
+    const hourlyRate = parkingLot?.hourlyRate || 50;
+    const fee = durationHours * hourlyRate;
+
+    // Update transaction
+    transaction.exitTime = exitTime;
+    transaction.status = 'COMPLETED';
+    transaction.duration = durationHours;
+    transaction.fee = fee;
+    transaction.exitMethod = 'MANUAL_OVERRIDE';
+    transaction.manualExitBy = guardName || 'Unknown Guard';
+    transaction.manualExitReason = reason || 'OTHER';
+    transaction.flagged = true;
+    await transaction.save();
+
+    console.log('✅ Manual exit saved with REVIEW FLAG:', transaction.vehicleNumber, '- ID:', transaction._id, '| Fee: Rs.' + fee);
+
+    // Update parking lot occupancy
+    if (parkingLot) {
+      parkingLot.currentOccupancy = Math.max(0, parkingLot.currentOccupancy - 1);
+      await parkingLot.save();
+    }
+
+    // Create alert for manual exit
+    const alert = new Alert({
+      type: 'MANUAL_ENTRY',
+      location: lotName,
+      description: `Manual exit by ${guardName || 'Guard'} for vehicle ${vehicleNumber.toUpperCase()}. Reason: ${reason || 'Not specified'}. Fee: Rs.${fee}`,
+      severity: 'MEDIUM',
+      timestamp: new Date()
+    });
+    await alert.save();
+
+    console.log('✅ Manual exit flagged:', vehicleNumber, '| Alert created for admin review');
+
+    res.json({
+      success: true,
+      message: `Vehicle ${vehicleNumber.toUpperCase()} exited. Fee: Rs.${fee}`,
+      transaction,
+      alert,
+      flagged: true,
+      fee
+    });
+  } catch (error) {
+    console.error('❌ ERROR in /api/manual-exit:', error.message, error.stack);
+    res.status(500).json({ success: false, message: 'Server error: ' + error.message });
+  }
+});
+
 // 4. POST /api/alert - Create tamper alert
 app.post('/api/alert', async (req, res) => {
   try {

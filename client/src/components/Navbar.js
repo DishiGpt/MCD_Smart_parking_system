@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Car, ShieldAlert, Cpu } from 'lucide-react';
+import { LayoutDashboard, Car, ShieldAlert, Cpu, Video } from 'lucide-react';
 
 const Navbar = () => {
   const linkClass = ({ isActive }) =>
@@ -24,6 +24,10 @@ const Navbar = () => {
             <NavLink to="/user" className={linkClass}>
               <Car size={18} />
               <span className="hidden sm:inline">Driver Portal</span>
+            </NavLink>
+            <NavLink to="/guard" className={linkClass}>
+              <Video size={18} />
+              <span className="hidden sm:inline">Guard Console</span>
             </NavLink>
             <NavLink to="/admin" className={linkClass}>
               <LayoutDashboard size={18} />

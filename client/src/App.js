@@ -4,6 +4,7 @@ import Navbar from './components/Navbar';
 import UserPortal from './components/UserPortal';
 import AdminPortal from './components/AdminPortal';
 import SimulatorPortal from './components/SimulatorPortal';
+import GuardConsole from './components/GuardConsole';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
             <Route path="/" element={<Navigate to="/user" replace />} />
             <Route path="/user" element={<UserPortal />} />
             <Route path="/admin" element={<AdminPortal />} />
+            <Route path="/guard" element={<GuardConsole />} />
             <Route path="/simulator" element={<SimulatorPortal />} />
           </Routes>
         </main>

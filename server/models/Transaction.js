@@ -29,6 +29,28 @@ const transactionSchema = new mongoose.Schema({
   parkingLot: {
     type: String,
     required: true
+  },
+  entryMethod: {
+    type: String,
+    enum: ['ANPR', 'MANUAL_OVERRIDE', 'RFID'],
+    default: 'ANPR'
+  },
+  isManualEntry: {
+    type: Boolean,
+    default: false
+  },
+  manualOverrideReason: {
+    type: String,
+    enum: ['CAMERA_GLITCH', 'SERVER_TIMEOUT', 'SYSTEM_FAILURE', 'OTHER'],
+    default: null
+  },
+  manualEntryBy: {
+    type: String,
+    default: null
+  },
+  flagged: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true

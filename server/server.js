@@ -134,7 +134,10 @@ app.post('/api/entry', async (req, res) => {
       vehicleNumber: vehicleNumber.toUpperCase(),
       parkingLot: lotName,
       entryTime: new Date(),
-      status: 'ACTIVE'
+      status: 'ACTIVE',
+      entryMethod: 'ANPR',
+      isManualEntry: false,
+      flagged: false
     });
     await transaction.save();
 
@@ -144,7 +147,7 @@ app.post('/api/entry', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Vehicle entry recorded successfully',
+      message: `✅ Vehicle ${vehicleNumber.toUpperCase()} Logged`,
       transaction,
       parkingLot: {
         name: parkingLot.name,
@@ -219,6 +222,83 @@ app.post('/api/exit', async (req, res) => {
   }
 });
 
+// 3.5. POST /api/manual-entry - Manual override entry (Guard Console)
+app.post('/api/manual-entry', async (req, res) => {
+  try {
+    const { vehicleNumber, parkingLotName, reason, guardName } = req.body;
+    
+    if (!vehicleNumber) {
+      return res.status(400).json({ success: false, message: 'Vehicle number is required' });
+    }
+
+    const lotName = parkingLotName || 'Main Gate Parking';
+    const parkingLot = await ParkingLot.findOne({ name: lotName });
+    
+    if (!parkingLot) {
+      return res.status(404).json({ success: false, message: 'Parking lot not found' });
+    }
+
+    if (parkingLot.currentOccupancy >= parkingLot.capacity) {
+      return res.status(400).json({ success: false, message: 'Parking lot is full' });
+    }
+
+    // Check if vehicle already has an active transaction
+    const existingTransaction = await Transaction.findOne({
+      vehicleNumber: vehicleNumber.toUpperCase(),
+      status: 'ACTIVE'
+    });
+
+    if (existingTransaction) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Vehicle already has an active parking session' 
+      });
+    }
+
+    // Create transaction with manual override flag
+    const transaction = new Transaction({
+      vehicleNumber: vehicleNumber.toUpperCase(),
+      parkingLot: lotName,
+      entryTime: new Date(),
+      status: 'ACTIVE',
+      entryMethod: 'MANUAL_OVERRIDE',
+      isManualEntry: true,
+      manualOverrideReason: reason || 'OTHER',
+      manualEntryBy: guardName || 'Unknown Guard',
+      flagged: true
+    });
+    await transaction.save();
+
+    // Update parking lot occupancy
+    parkingLot.currentOccupancy += 1;
+    await parkingLot.save();
+
+    // Create alert for manual entry
+    const alert = new Alert({
+      type: 'MANUAL_ENTRY',
+      location: lotName,
+      description: `Manual entry by ${guardName || 'Guard'} for vehicle ${vehicleNumber.toUpperCase()}. Reason: ${reason || 'Not specified'}`,
+      severity: 'MEDIUM',
+      timestamp: new Date()
+    });
+    await alert.save();
+
+    res.json({
+      success: true,
+      message: `⚠️ Manual Entry: ${vehicleNumber.toUpperCase()} Logged (${reason})`,
+      transaction,
+      alert,
+      parkingLot: {
+        name: parkingLot.name,
+        occupancy: parkingLot.currentOccupancy,
+        capacity: parkingLot.capacity
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 4. POST /api/alert - Create tamper alert
 app.post('/api/alert', async (req, res) => {
   try {
@@ -287,6 +367,73 @@ app.post('/api/hardware-event', async (req, res) => {
           message: 'Unknown event type' 
         });
     }
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 10. GET /api/suspicious-activity - Get manual entry rate by contractor
+app.get('/api/suspicious-activity', async (req, res) => {
+  try {
+    const parkingLots = await ParkingLot.find().select('name');
+    const suspiciousData = [];
+
+    for (const lot of parkingLots) {
+      const totalEntries = await Transaction.countDocuments({
+        parkingLot: lot.name,
+        status: { $in: ['ACTIVE', 'COMPLETED'] }
+      });
+
+      const manualEntries = await Transaction.countDocuments({
+        parkingLot: lot.name,
+        isManualEntry: true,
+        status: { $in: ['ACTIVE', 'COMPLETED'] }
+      });
+
+      const manualRate = totalEntries > 0 ? ((manualEntries / totalEntries) * 100).toFixed(2) : 0;
+      const flagged = manualRate > 5; // >5% threshold
+
+      suspiciousData.push({
+        parkingLot: lot.name,
+        totalEntries,
+        manualEntries,
+        manualRate: parseFloat(manualRate),
+        flagged,
+        alertMessage: flagged ? `⚠️ High Manual Entry Rate at ${lot.name} (${manualRate}%) - Check for Corruption` : null
+      });
+    }
+
+    res.json({
+      success: true,
+      suspiciousActivity: suspiciousData,
+      criticalAlerts: suspiciousData.filter(d => d.flagged)
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 11. GET /api/parking-lots - Get all parking lots with capacity info
+app.get('/api/parking-lots', async (req, res) => {
+  try {
+    const parkingLots = await ParkingLot.find().select('name location currentOccupancy capacity hourlyRate');
+    
+    const lotsWithCapacity = parkingLots.map(lot => ({
+      id: lot._id,
+      name: lot.name,
+      location: lot.location || 'Not specified',
+      occupancy: lot.currentOccupancy,
+      capacity: lot.capacity,
+      available: lot.capacity - lot.currentOccupancy,
+      occupancyRate: ((lot.currentOccupancy / lot.capacity) * 100).toFixed(1),
+      hourlyRate: lot.hourlyRate || 50,
+      isFull: lot.currentOccupancy >= lot.capacity
+    }));
+
+    res.json({
+      success: true,
+      parkingLots: lotsWithCapacity
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -410,6 +557,43 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
+// 12. GET /api/scan-history - Get recent scan history for Guard Console
+app.get('/api/scan-history', async (req, res) => {
+  try {
+    const { parkingLotName, limit = 20 } = req.query;
+    
+    const lotName = parkingLotName || 'Main Gate Parking';
+    
+    // Fetch recent transactions for this parking lot
+    const transactions = await Transaction.find({
+      parkingLot: lotName
+    })
+    .sort({ entryTime: -1 })
+    .limit(parseInt(limit))
+    .select('vehicleNumber entryTime exitTime fee status entryMethod isManualEntry manualOverrideReason manualEntryBy flagged');
+
+    const scans = transactions.map(tx => ({
+      plate: tx.vehicleNumber,
+      time: tx.entryTime.toLocaleTimeString(),
+      method: tx.entryMethod,
+      status: tx.flagged ? 'FLAGGED' : 'SUCCESS',
+      reason: tx.manualOverrideReason || null,
+      guardName: tx.manualEntryBy || null,
+      fee: tx.fee || 0,
+      exitTime: tx.exitTime ? tx.exitTime.toLocaleTimeString() : null
+    }));
+
+    res.json({
+      success: true,
+      count: scans.length,
+      parkingLot: lotName,
+      scans
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ 
@@ -418,6 +602,7 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date()
   });
 });
+
 
 // Start server
 app.listen(PORT, () => {

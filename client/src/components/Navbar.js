@@ -33,10 +33,10 @@ const Navbar = () => {
               <LayoutDashboard size={18} />
               <span className="hidden sm:inline">Admin Hub</span>
             </NavLink>
-            <NavLink to="/simulator" className={linkClass}>
+            {/* <NavLink to="/simulator" className={linkClass}>
               <Cpu size={18} />
               <span className="hidden sm:inline">Simulator</span>
-            </NavLink>
+            </NavLink> */}
           </div>
         </div>
       </div>

@@ -4,3 +4,5 @@ client/node_modules/
 client/build/
 .DS_Store
 .env.local
+*.md
+*.docx

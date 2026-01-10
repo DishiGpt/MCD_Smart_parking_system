@@ -103,10 +103,16 @@ const GuardConsole = () => {
   const scanPlate = useCallback(async () => {
     try {
       const screenshot = webcamRef.current?.getScreenshot();
-      if (!screenshot) return;
+      if (!screenshot) {
+        console.warn('⚠️ No screenshot available - camera may not be ready');
+        return;
+      }
 
+      console.log('📸 Capturing screenshot for OCR...');
       const { data } = await Tesseract.recognize(screenshot, 'eng');
       const text = data.text.toUpperCase();
+      
+      console.log('📝 OCR Text detected:', text.substring(0, 100));
 
       // RegEx pattern for vehicle number plates (Indian format or alphanumeric)
       const plateRegex = /[A-Z]{2}\s?\d{1,2}\s?[A-Z]{1,2}\s?\d{4}|\b[A-Z]{2,3}\d{2,4}[A-Z]{1,3}\b/g;
@@ -114,28 +120,39 @@ const GuardConsole = () => {
 
       if (matches && matches.length > 0) {
         const plate = matches[0].replace(/\s+/g, '').trim();
+        console.log('🎯 Plate detected:', plate);
         
         // Avoid duplicate scans within 5 seconds
         if (lastScanned && lastScanned.number === plate && Date.now() - lastScanned.time < 5000) {
+          console.log('⏭️ Duplicate scan ignored (within 5s cooldown)');
           return;
         }
 
+        console.log('✅ Calling handlePlateDetected for:', plate);
         handlePlateDetected(plate);
+      } else {
+        console.log('❌ No plate pattern matched in text');
       }
     } catch (error) {
-      console.error('OCR Error:', error);
+      console.error('❌ OCR Error:', error.message);
     }
   }, [lastScanned, handlePlateDetected]);
 
   // Start ANPR scanning every 2 seconds
   useEffect(() => {
-    if (!isScanning || !webcamRef.current) return;
+    if (!isScanning || !webcamRef.current) {
+      console.log('⏸️ Scanning paused - isScanning:', isScanning, 'webcamRef:', !!webcamRef.current);
+      return;
+    }
 
+    console.log('🟢 Starting ANPR scan interval...');
     scanIntervalRef.current = setInterval(() => {
+      console.log('📹 Scan cycle triggered (every 2s)');
       scanPlate();
     }, 2000);
 
     return () => {
+      console.log('🟡 Clearing scan interval');
       if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
     };
   }, [isScanning, scanPlate]);

@@ -17,7 +17,8 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI, {
+const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/smart-parking';
+mongoose.connect(MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true
 })
@@ -98,6 +99,7 @@ app.get('/api/status', async (req, res) => {
 app.post('/api/entry', async (req, res) => {
   try {
     const { vehicleNumber, parkingLotName } = req.body;
+    console.log('📸 ANPR Scan received:', vehicleNumber);
     
     if (!vehicleNumber) {
       return res.status(400).json({ success: false, message: 'Vehicle number is required' });
@@ -108,11 +110,13 @@ app.post('/api/entry', async (req, res) => {
     const parkingLot = await ParkingLot.findOne({ name: lotName });
     
     if (!parkingLot) {
+      console.log('❌ Parking lot not found:', lotName);
       return res.status(404).json({ success: false, message: 'Parking lot not found' });
     }
 
     // Check if parking lot is full
     if (parkingLot.currentOccupancy >= parkingLot.capacity) {
+      console.log('❌ Parking lot full:', lotName);
       return res.status(400).json({ success: false, message: 'Parking lot is full' });
     }
 
@@ -123,6 +127,7 @@ app.post('/api/entry', async (req, res) => {
     });
 
     if (existingTransaction) {
+      console.log('⚠️ Vehicle already has active session:', vehicleNumber);
       return res.status(400).json({ 
         success: false, 
         message: 'Vehicle already has an active parking session' 
@@ -145,6 +150,8 @@ app.post('/api/entry', async (req, res) => {
     parkingLot.currentOccupancy += 1;
     await parkingLot.save();
 
+    console.log('✅ Vehicle entry recorded:', vehicleNumber, '| Lot occupancy:', parkingLot.currentOccupancy + '/' + parkingLot.capacity);
+
     res.json({
       success: true,
       message: `✅ Vehicle ${vehicleNumber.toUpperCase()} Logged`,
@@ -156,7 +163,8 @@ app.post('/api/entry', async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('❌ ERROR in /api/entry:', error.message, error.stack);
+    res.status(500).json({ success: false, message: 'Server error: ' + error.message });
   }
 });
 
@@ -164,6 +172,7 @@ app.post('/api/entry', async (req, res) => {
 app.post('/api/exit', async (req, res) => {
   try {
     const { vehicleNumber } = req.body;
+    console.log('🚪 Vehicle exit scan:', vehicleNumber);
     
     if (!vehicleNumber) {
       return res.status(400).json({ success: false, message: 'Vehicle number is required' });
@@ -176,6 +185,7 @@ app.post('/api/exit', async (req, res) => {
     });
 
     if (!transaction) {
+      console.log('❌ No active session for vehicle:', vehicleNumber);
       return res.status(404).json({ 
         success: false, 
         message: 'No active parking session found for this vehicle' 
@@ -201,6 +211,8 @@ app.post('/api/exit', async (req, res) => {
       await parkingLot.save();
     }
 
+    console.log('✅ Vehicle exit completed:', vehicleNumber, '| Fee: ₹' + totalFee + ' | Duration: ' + durationInHours + ' hour(s)');
+
     res.json({
       success: true,
       message: 'Vehicle exit recorded successfully',
@@ -218,7 +230,8 @@ app.post('/api/exit', async (req, res) => {
       } : null
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('❌ ERROR in /api/exit:', error.message, error.stack);
+    res.status(500).json({ success: false, message: 'Server error: ' + error.message });
   }
 });
 
@@ -226,6 +239,7 @@ app.post('/api/exit', async (req, res) => {
 app.post('/api/manual-entry', async (req, res) => {
   try {
     const { vehicleNumber, parkingLotName, reason, guardName } = req.body;
+    console.log('🚩 FLAGGED MANUAL ENTRY:', vehicleNumber, '| Reason:', reason, '| By:', guardName);
     
     if (!vehicleNumber) {
       return res.status(400).json({ success: false, message: 'Vehicle number is required' });
@@ -235,10 +249,12 @@ app.post('/api/manual-entry', async (req, res) => {
     const parkingLot = await ParkingLot.findOne({ name: lotName });
     
     if (!parkingLot) {
+      console.log('❌ Parking lot not found:', lotName);
       return res.status(404).json({ success: false, message: 'Parking lot not found' });
     }
 
     if (parkingLot.currentOccupancy >= parkingLot.capacity) {
+      console.log('❌ Parking lot full:', lotName);
       return res.status(400).json({ success: false, message: 'Parking lot is full' });
     }
 
@@ -283,6 +299,8 @@ app.post('/api/manual-entry', async (req, res) => {
     });
     await alert.save();
 
+    console.log('✅ Manual entry flagged:', vehicleNumber, '| Alert created for admin review');
+
     res.json({
       success: true,
       message: `⚠️ Manual Entry: ${vehicleNumber.toUpperCase()} Logged (${reason})`,
@@ -295,7 +313,8 @@ app.post('/api/manual-entry', async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('❌ ERROR in /api/manual-entry:', error.message, error.stack);
+    res.status(500).json({ success: false, message: 'Server error: ' + error.message });
   }
 });
 

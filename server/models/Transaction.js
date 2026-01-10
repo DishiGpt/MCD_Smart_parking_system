@@ -42,7 +42,9 @@ const transactionSchema = new mongoose.Schema({
   manualOverrideReason: {
     type: String,
     enum: ['CAMERA_GLITCH', 'SERVER_TIMEOUT', 'SYSTEM_FAILURE', 'OTHER'],
-    default: null
+    // Do not default to null because enum validator rejects null.
+    // Leave undefined when not a manual entry so validation is skipped.
+    default: undefined
   },
   manualEntryBy: {
     type: String,

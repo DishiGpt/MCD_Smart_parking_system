@@ -6,6 +6,7 @@ I have successfully implemented the **ANPR License Plate Scanner** for your MCD 
 
 ---
 
+
 ## 📦 Deliverables
 
 ### 1. **Scanner.jsx** ✅

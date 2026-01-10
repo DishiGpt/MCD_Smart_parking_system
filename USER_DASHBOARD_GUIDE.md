@@ -4,6 +4,7 @@
 
 I have created a **production-ready Location-Aware User Dashboard** for your Smart Parking App. The component automatically detects the user's location, fetches nearby parking lots from your API, and displays them sorted by distance.
 
+
 ---
 
 ## 📦 What's Included

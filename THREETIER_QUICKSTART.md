@@ -2,6 +2,7 @@
 
 ## 🎯 What You Just Got
 
+
 A complete **Smart Parking System** with 3 separate applications:
 
 | App | Purpose | Technology | Access |

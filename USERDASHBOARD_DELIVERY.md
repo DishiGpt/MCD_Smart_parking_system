@@ -2,6 +2,7 @@
 
 ## 📋 Executive Summary
 
+
 I have created a **production-ready Location-Aware User Dashboard** component for your Smart Parking App. The component automatically:
 
 1. ✅ **Detects user location** using browser geolocation API

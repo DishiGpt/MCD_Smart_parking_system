@@ -3,6 +3,7 @@
 ## Overview
 The Scanner component provides real-time Optical Character Recognition (OCR) capability to capture and extract license plate numbers directly from a device camera. It integrates Tesseract.js for OCR processing and react-webcam for camera access.
 
+
 ---
 
 ## File Structure

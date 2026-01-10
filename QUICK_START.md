@@ -5,6 +5,7 @@
 
 Your smart parking system now has an advanced **OCR License Plate Scanner**! All dependencies are installed and the component is fully integrated.
 
+
 ---
 
 ## 📍 What Was Added

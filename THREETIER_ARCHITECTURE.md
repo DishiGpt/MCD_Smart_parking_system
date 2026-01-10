@@ -2,6 +2,7 @@
 
 A comprehensive smart parking management system with three distinct applications: **Mobile App for Drivers**, **Guard Console for Entry/Exit**, and **Admin Dashboard for Management**.
 
+
 ## 📋 Architecture Overview
 
 ```

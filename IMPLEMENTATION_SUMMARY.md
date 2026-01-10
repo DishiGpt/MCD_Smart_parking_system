@@ -4,6 +4,7 @@
 
 ### 1️⃣ **Backend (Node.js/Express)**
 
+
 #### Updated Database Schema
 - **Transaction Model**: Added fields for manual override tracking
   - `entryMethod`: "ANPR" | "MANUAL_OVERRIDE" | "RFID"

@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const alertSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ['GHOST_VEHICLE', 'FORCED_ENTRY', 'CAPACITY_EXCEEDED', 'SYSTEM_ERROR'],
+    enum: ['GHOST_VEHICLE', 'FORCED_ENTRY', 'CAPACITY_EXCEEDED', 'SYSTEM_ERROR', 'MANUAL_ENTRY'],
     required: true
   },
   location: {

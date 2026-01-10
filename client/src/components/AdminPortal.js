@@ -62,26 +62,6 @@ const AdminPortal = () => {
             <BarChart3 className="text-blue-600" />
             MCD Enforcement Dashboard
           </h1>
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                setScannerMode('ENTRY');
-                setShowScanner(true);
-              }}
-              className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition"
-            >
-              + Entry Scanner
-            </button>
-            <button
-              onClick={() => {
-                setScannerMode('EXIT');
-                setShowScanner(true);
-              }}
-              className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition"
-            >
-              + Exit Scanner
-            </button>
-          </div>
         </div>
 
         {/* Scanner Modal */}

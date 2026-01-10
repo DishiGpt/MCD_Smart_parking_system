@@ -235,14 +235,35 @@ app.post('/api/exit', async (req, res) => {
   }
 });
 
-// 3.5. POST /api/manual-entry - Manual override entry (Guard Console)
+// 3.5. POST /api/manual-entry - Manual override entry (Guard Console) - 🔒 SECURED
 app.post('/api/manual-entry', async (req, res) => {
   try {
-    const { vehicleNumber, parkingLotName, reason, guardName } = req.body;
-    console.log('🚩 FLAGGED MANUAL ENTRY:', vehicleNumber, '| Reason:', reason, '| By:', guardName);
+    const { vehicleNumber, parkingLotName, reason, guardName, cameraStatus, ocrFailureCount } = req.body;
+    console.log('🚩 FLAGGED MANUAL ENTRY:', vehicleNumber, '| Reason:', reason, '| By:', guardName, '| Camera:', cameraStatus, '| OCR Fails:', ocrFailureCount);
     
     if (!vehicleNumber) {
       return res.status(400).json({ success: false, message: 'Vehicle number is required' });
+    }
+
+    // 🔒 SECURITY: Validate that manual entry is justified
+    const validReasons = ['CAMERA_GLITCH', 'SERVER_TIMEOUT', 'SYSTEM_FAILURE', 'OTHER'];
+    if (!validReasons.includes(reason)) {
+      console.log('❌ Invalid reason:', reason);
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid failure reason. Manual entry rejected.' 
+      });
+    }
+
+    // 🔒 SECURITY: Verify camera status indicates actual failure
+    const allowedCameraStatuses = ['NO_CAMERA', 'PERMISSION_DENIED', 'STREAM_ERROR'];
+    if (cameraStatus && !allowedCameraStatuses.includes(cameraStatus)) {
+      console.log('❌ Camera operational, manual entry blocked. Status:', cameraStatus);
+      return res.status(403).json({ 
+        success: false, 
+        message: '🔒 Manual entry denied. Camera system is operational.',
+        cameraStatus: cameraStatus
+      });
     }
 
     const lotName = parkingLotName || 'Main Gate Parking';
@@ -271,7 +292,7 @@ app.post('/api/manual-entry', async (req, res) => {
       });
     }
 
-    // Create transaction with manual override flag
+    // 🔒 SECURITY: Create transaction with enhanced audit fields
     const transaction = new Transaction({
       vehicleNumber: vehicleNumber.toUpperCase(),
       parkingLot: lotName,
@@ -284,6 +305,7 @@ app.post('/api/manual-entry', async (req, res) => {
       flagged: true
     });
     await transaction.save();
+    console.log('✅ Manual entry saved with REVIEW FLAG:', transaction.vehicleNumber, '- ID:', transaction._id, '| Camera:', cameraStatus);
 
     // Update parking lot occupancy
     parkingLot.currentOccupancy += 1;

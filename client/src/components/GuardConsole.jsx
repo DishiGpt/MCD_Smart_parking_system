@@ -3,8 +3,10 @@ import Webcam from 'react-webcam';
 import Tesseract from 'tesseract.js';
 import { toast } from 'react-toastify';
 import GuardAuth from './GuardAuth';
+import { useAuth } from '../context/AuthContext';
 
 const GuardConsole = () => {
+  const { login, logout } = useAuth();
   // Session Management
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sessionData, setSessionData] = useState(null);
@@ -25,9 +27,12 @@ const GuardConsole = () => {
   const [loading, setLoading] = useState(false);
   const scanIntervalRef = useRef(null);
 
-  // Camera Health & Manual Entry Control (OCR-independent)
+  // Camera Health (OCR-independent)
   const [cameraStatus, setCameraStatus] = useState('INITIALIZING');
-  const [manualEntryEnabled, setManualEntryEnabled] = useState(false);
+  
+  // Payment Modal for Exit
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [pendingExitData, setPendingExitData] = useState(null);
 
   const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -42,6 +47,8 @@ const GuardConsole = () => {
     setIsAuthenticated(true);
     // Save to localStorage for persistence across reloads
     localStorage.setItem('guardSession', JSON.stringify(data));
+    // Update AuthContext
+    login('GUARD', data.guardId);
     toast.success(`Shift started! Session ID: ${data.sessionId}`);
   };
 
@@ -57,15 +64,26 @@ const GuardConsole = () => {
           const response = await fetch(`${API_BASE}/guard/active-session/${parsedSession.guardId}`);
           const data = await response.json();
           
-          if (data.success && data.session && data.session.status === 'ACTIVE') {
+          if (data.success && data.hasActiveSession && data.session) {
             // Session is still active, restore it
-            setSessionData(parsedSession);
+            const restoredSession = {
+              sessionId: data.session.sessionId,
+              guardId: data.session.guardId,
+              parkingLot: data.session.parkingLot,
+              systemHealth: data.session.systemHealthAtStart,
+              openingCash: data.session.openingCash
+            };
+            setSessionData(restoredSession);
             setIsAuthenticated(true);
+            // Also restore AuthContext user state
+            login('GUARD', data.session.guardId);
             toast.success('Session restored! Welcome back.', { autoClose: 3000 });
           } else {
             // Session no longer active, clear localStorage
             localStorage.removeItem('guardSession');
-            toast.info('Previous session has ended. Please login again.');
+            if (data.hasActiveSession === false) {
+              toast.info('Previous session has ended. Please login again.');
+            }
           }
         } catch (error) {
           console.error('Error restoring session:', error);
@@ -75,7 +93,7 @@ const GuardConsole = () => {
     };
     
     restoreSession();
-  }, [API_BASE]);
+  }, [API_BASE, login]);
 
   const fetchScanHistory = useCallback(async () => {
     try {
@@ -95,17 +113,7 @@ const GuardConsole = () => {
     return () => clearInterval(intervalId);
   }, [fetchScanHistory]);
 
-  useEffect(() => {
-    // Manual entry is enabled ONLY when camera truly fails
-    const shouldEnableManual = cameraStatus !== 'OK' && cameraStatus !== 'INITIALIZING';
-    setManualEntryEnabled(shouldEnableManual);
-    
-    if (shouldEnableManual) {
-      console.log('🔓 Manual entry ENABLED - Camera failure:', cameraStatus);
-    } else {
-      console.log('🔒 Manual entry LOCKED - Camera operational');
-    }
-  }, [cameraStatus]);
+  // Manual entry is ALWAYS enabled to handle muddy plates and edge cases
 
   const handleCameraReady = useCallback(() => {
     console.log('✅ Camera ready and operational');
@@ -132,36 +140,47 @@ const GuardConsole = () => {
     setLoading(true);
 
     try {
-      const endpoint = mode === 'ENTRY' ? '/entry' : '/exit';
-      const body = mode === 'ENTRY' 
-        ? { vehicleNumber: plateNumber, parkingLotName: parkingLot, sessionId }
-        : { vehicleNumber: plateNumber, paymentMode: 'FASTAG', sessionId };
+      if (mode === 'ENTRY') {
+        // Process ENTRY immediately
+        const response = await fetch(`${API_BASE}/entry`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ vehicleNumber: plateNumber, parkingLotName: parkingLot, sessionId })
+        });
 
-      const response = await fetch(`${API_BASE}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
+        const data = await response.json();
 
-      const data = await response.json();
-
-      if (data.success) {
-        if (mode === 'EXIT') {
-          const fee = data.transaction?.fee || 0;
-          toast.success(`Vehicle ${plateNumber} Exit - Fee: ₹${fee}`);
-        } else {
+        if (data.success) {
           toast.success(`Vehicle ${plateNumber} Entry Logged`);
+          setTimeout(() => fetchScanHistory(), 1000);
+        } else {
+          toast.error(data.message);
         }
-        setTimeout(() => fetchScanHistory(), 1000);
       } else {
-        toast.error(data.message);
+        // For EXIT, first calculate fee then show payment modal
+        const response = await fetch(`${API_BASE}/calculate-fee`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ vehicleNumber: plateNumber })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          const fee = data.fee || 0;
+          // Show payment modal instead of immediately processing
+          setPendingExitData({ vehicleNumber: plateNumber, fee });
+          setShowPaymentModal(true);
+        } else {
+          toast.error(data.message || 'Vehicle not found or fee calculation failed');
+        }
       }
     } catch (error) {
       toast.error(`Error: ${error.message}`);
     } finally {
       setLoading(false);
     }
-  }, [mode, parkingLot, API_BASE, fetchScanHistory]);
+  }, [mode, parkingLot, API_BASE, fetchScanHistory, sessionId]);
 
   const scanPlate = useCallback(async () => {
     try {
@@ -209,18 +228,10 @@ const GuardConsole = () => {
   }, [isScanning, scanPlate]);
 
   const handleManualEntryClick = () => {
-    if (!manualEntryEnabled) {
-      toast.error('Manual entry locked. Camera system is operational.');
-      return;
-    }
     setShowManualModal(true);
   };
 
   const handleManualExitClick = () => {
-    if (!manualEntryEnabled) {
-      toast.error('Manual exit locked. Camera system is operational.');
-      return;
-    }
     setShowManualExitModal(true);
   };
 
@@ -275,28 +286,73 @@ const GuardConsole = () => {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE}/manual-exit`, {
+      // First calculate the fee
+      const response = await fetch(`${API_BASE}/calculate-fee`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          vehicleNumber: manualExitVehicle.toUpperCase(),
-          parkingLotName: parkingLot,
-          reason: manualExitReason,
-          guardName: guardName,
-          cameraStatus: cameraStatus,
-          paymentMode: 'FASTAG',
-          sessionId
-        })
+        body: JSON.stringify({ vehicleNumber: manualExitVehicle.toUpperCase() })
       });
 
       const data = await response.json();
 
       if (data.success) {
-        const fee = data.transaction?.fee || data.fee || 0;
-        toast.success(`Manual Exit: ${manualExitVehicle.toUpperCase()} - Fee: ₹${fee}`);
+        const fee = data.fee || 0;
+        // Show payment modal with manual exit details
+        setPendingExitData({ 
+          vehicleNumber: manualExitVehicle.toUpperCase(), 
+          fee,
+          isManual: true,
+          reason: manualExitReason
+        });
+        setShowPaymentModal(true);
+        setShowManualExitModal(false);
+      } else {
+        toast.error(data.message || 'Vehicle not found');
+      }
+    } catch (error) {
+      toast.error(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePaymentConfirmed = async (paymentMode) => {
+    if (!pendingExitData) return;
+
+    setLoading(true);
+
+    try {
+      const endpoint = pendingExitData.isManual ? '/manual-exit' : '/exit';
+      const body = pendingExitData.isManual 
+        ? {
+            vehicleNumber: pendingExitData.vehicleNumber,
+            parkingLotName: parkingLot,
+            reason: pendingExitData.reason,
+            guardName: guardName,
+            cameraStatus: cameraStatus,
+            paymentMode,
+            sessionId
+          }
+        : {
+            vehicleNumber: pendingExitData.vehicleNumber,
+            paymentMode,
+            sessionId
+          };
+
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(`Vehicle ${pendingExitData.vehicleNumber} Exit - Fee: ₹${pendingExitData.fee} (${paymentMode})`);
+        setShowPaymentModal(false);
+        setPendingExitData(null);
         setManualExitVehicle('');
         setManualExitReason('CAMERA_GLITCH');
-        setShowManualExitModal(false);
         setTimeout(() => fetchScanHistory(), 1000);
       } else {
         toast.error(data.message);
@@ -349,6 +405,8 @@ const GuardConsole = () => {
           setShowEndShiftModal(false);
           // Clear localStorage
           localStorage.removeItem('guardSession');
+          // Clear AuthContext
+          logout();
         }, 2000);
       } else {
         toast.error(data.message);
@@ -489,46 +547,18 @@ const GuardConsole = () => {
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={handleManualEntryClick}
-              disabled={!manualEntryEnabled}
-              className={`font-bold py-4 rounded-lg transition-all text-sm shadow-lg border-2 ${
-                manualEntryEnabled
-                  ? 'bg-red-600 hover:bg-red-700 text-white border-red-500 cursor-pointer'
-                  : 'bg-gray-700 text-gray-500 border-gray-600 cursor-not-allowed opacity-60'
-              }`}
+              className="bg-red-600 hover:bg-red-700 text-white border-red-500 cursor-pointer font-bold py-4 rounded-lg transition-all text-sm shadow-lg border-2"
             >
-              {manualEntryEnabled ? (
-                <>
-                  MANUAL ENTRY<br />
-                  <span className="text-xs text-gray-200">(Enabled)</span>
-                </>
-              ) : (
-                <>
-                  ENTRY LOCKED<br />
-                  <span className="text-xs text-gray-400">(Camera OK)</span>
-                </>
-              )}
+              MANUAL ENTRY<br />
+              <span className="text-xs text-gray-200">(Always Available)</span>
             </button>
 
             <button
               onClick={handleManualExitClick}
-              disabled={!manualEntryEnabled}
-              className={`font-bold py-4 rounded-lg transition-all text-sm shadow-lg border-2 ${
-                manualEntryEnabled
-                  ? 'bg-orange-600 hover:bg-orange-700 text-white border-orange-500 cursor-pointer'
-                  : 'bg-gray-700 text-gray-500 border-gray-600 cursor-not-allowed opacity-60'
-              }`}
+              className="bg-orange-600 hover:bg-orange-700 text-white border-orange-500 cursor-pointer font-bold py-4 rounded-lg transition-all text-sm shadow-lg border-2"
             >
-              {manualEntryEnabled ? (
-                <>
-                  MANUAL EXIT<br />
-                  <span className="text-xs text-gray-200">(Enabled)</span>
-                </>
-              ) : (
-                <>
-                  EXIT LOCKED<br />
-                  <span className="text-xs text-gray-400">(Camera OK)</span>
-                </>
-              )}
+              MANUAL EXIT<br />
+              <span className="text-xs text-gray-200">(Always Available)</span>
             </button>
           </div>
 
@@ -761,6 +791,71 @@ const GuardConsole = () => {
                 ⚠️ This will log you out and close your session
               </p>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal for Exit */}
+      {showPaymentModal && pendingExitData && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-xl border-2 border-yellow-500 shadow-2xl max-w-md w-full p-6">
+            <h2 className="text-2xl font-bold text-yellow-500 mb-4">💰 Payment Collection</h2>
+
+            <div className="space-y-4">
+              <div className="bg-gray-800 px-6 py-4 rounded-lg">
+                <p className="text-gray-400 text-sm mb-2">Vehicle Number</p>
+                <p className="text-3xl font-mono font-bold text-white">{pendingExitData.vehicleNumber}</p>
+              </div>
+
+              <div className="bg-yellow-900/30 border-2 border-yellow-500 px-6 py-4 rounded-lg">
+                <p className="text-gray-400 text-sm mb-2">Parking Fee</p>
+                <p className="text-4xl font-bold text-yellow-400">₹{pendingExitData.fee}</p>
+              </div>
+
+              <div className="bg-gray-800 px-4 py-3 rounded-lg">
+                <p className="text-yellow-400 text-sm font-semibold mb-2">⚠️ Collect Payment Before Opening Gate</p>
+                <p className="text-gray-400 text-xs">Select payment method after receiving payment</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => handlePaymentConfirmed('CASH')}
+                  disabled={loading}
+                  className="bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-6 rounded-lg transition-all shadow-lg disabled:opacity-50 flex flex-col items-center gap-2"
+                >
+                  <span className="text-3xl">💵</span>
+                  <span>Cash Received</span>
+                </button>
+
+                <button
+                  onClick={() => handlePaymentConfirmed('UPI')}
+                  disabled={loading}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-lg transition-all shadow-lg disabled:opacity-50 flex flex-col items-center gap-2"
+                >
+                  <span className="text-3xl">📱</span>
+                  <span>UPI Verified</span>
+                </button>
+              </div>
+
+              <button
+                onClick={() => {
+                  setShowPaymentModal(false);
+                  setPendingExitData(null);
+                  setLoading(false);
+                }}
+                disabled={loading}
+                className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+
+              {loading && (
+                <div className="flex items-center justify-center gap-2 text-yellow-400">
+                  <div className="animate-spin border-2 border-gray-600 border-t-yellow-500 rounded-full w-5 h-5"></div>
+                  <span className="text-sm">Processing...</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

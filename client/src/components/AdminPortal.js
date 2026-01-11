@@ -1,31 +1,45 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle, IndianRupee, Car, BarChart3, Bell, X, Shield } from 'lucide-react';
+import { AlertTriangle, CheckCircle, IndianRupee, Car, BarChart3, Bell, X, Shield, UserPlus, Users } from 'lucide-react';
 import axios from 'axios';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import Scanner from './Scanner';
 import GuardAuditPanel from './GuardAuditPanel';
+import { toast } from 'react-toastify';
 
 const AdminPortal = () => {
   const [stats, setStats] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [showScanner, setShowScanner] = useState(false);
-  const [scannerMode, setScannerMode] = useState('ENTRY');
-  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'guards'
+  const [scannerMode] = useState('ENTRY');
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'guards' | 'staff'
+  const [parkingLots, setParkingLots] = useState([]);
+  
+  // Staff Management State
+  const [guards, setGuards] = useState([]);
+  const [newGuard, setNewGuard] = useState({
+    name: '',
+    guardId: '',
+    password: '',
+    phoneNumber: '',
+    assignedLot: ''
+  });
   
   const refreshData = async () => {
     try {
-      const [alertsRes, transactionsRes, statusRes] = await Promise.all([
+      const [alertsRes, transactionsRes, statusRes, guardsRes, parkingLotsRes] = await Promise.all([
         axios.get('/api/alerts'),
         axios.get('/api/transactions'),
-        axios.get('/api/status')
+        axios.get('/api/status'),
+        axios.get('/api/guards'),
+        axios.get('/api/parking-lots')
       ]);
       
       setAlerts(alertsRes.data.alerts || []);
       setTransactions(transactionsRes.data.transactions || []);
       setStats(transactionsRes.data.stats || {});
-      // eslint-disable-next-line no-unused-vars
-      const parkingLotStatus = statusRes.data.parkingLots || [];
+      setParkingLots(parkingLotsRes.data.parkingLots || []);
+      setGuards(guardsRes.data.guards || []);
     } catch (error) {
       console.error('Error fetching admin data:', error);
     }
@@ -90,9 +104,177 @@ const AdminPortal = () => {
             <Shield size={18} />
             Guard Audit
           </button>
+          <button
+            onClick={() => setActiveTab('staff')}
+            className={`flex-1 px-4 py-2 rounded-md font-semibold transition-all flex items-center justify-center gap-2 ${
+              activeTab === 'staff'
+                ? 'bg-blue-600 text-white'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Users size={18} />
+            Staff Management
+          </button>
         </div>
 
-        {activeTab === 'guards' ? (
+        {activeTab === 'staff' ? (
+          <div className="space-y-6">
+            {/* Add New Guard Form */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+              <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <UserPlus size={20} className="text-blue-500" />
+                Add New Guard
+              </h3>
+              <form 
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!newGuard.name || !newGuard.guardId || !newGuard.password || !newGuard.phoneNumber) {
+                    toast.error('Please fill all required fields');
+                    return;
+                  }
+                  try {
+                    await axios.post('/api/guards', {
+                      guardId: newGuard.guardId,
+                      name: newGuard.name,
+                      password: newGuard.password,
+                      phoneNumber: newGuard.phoneNumber,
+                      assignedParkingLot: newGuard.assignedLot || null,
+                      status: 'ACTIVE'
+                    });
+                    setNewGuard({ name: '', guardId: '', password: '', phoneNumber: '', assignedLot: '' });
+                    toast.success(`Guard ${newGuard.name} added successfully!`);
+                    refreshData();
+                  } catch (error) {
+                    toast.error(error.response?.data?.message || 'Failed to add guard');
+                  }
+                }}
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4"
+              >
+                <input
+                  type="text"
+                  placeholder="Full Name"
+                  value={newGuard.name}
+                  onChange={(e) => setNewGuard({ ...newGuard, name: e.target.value })}
+                  className="border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
+                />
+                <input
+                  type="text"
+                  placeholder="Guard ID (e.g., GUARD004)"
+                  value={newGuard.guardId}
+                  onChange={(e) => setNewGuard({ ...newGuard, guardId: e.target.value.toUpperCase() })}
+                  className="border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500 font-mono"
+                />
+                <input
+                  type="password"
+                  placeholder="Password"
+                  value={newGuard.password}
+                  onChange={(e) => setNewGuard({ ...newGuard, password: e.target.value })}
+                  className="border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
+                />
+                <input
+                  type="tel"
+                  placeholder="Phone Number (e.g., +91-9876543210)"
+                  value={newGuard.phoneNumber}
+                  onChange={(e) => setNewGuard({ ...newGuard, phoneNumber: e.target.value })}
+                  className="border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
+                />
+                <select
+                  value={newGuard.assignedLot}
+                  onChange={(e) => setNewGuard({ ...newGuard, assignedLot: e.target.value })}
+                  className="border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="">Select Parking Lot</option>
+                  {parkingLots.map((lot) => (
+                    <option key={lot.id} value={lot.name}>{lot.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="submit"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-all flex items-center justify-center gap-2"
+                >
+                  <UserPlus size={18} />
+                  Add Guard
+                </button>
+              </form>
+            </div>
+
+            {/* Guards List */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="p-4 border-b border-slate-100 bg-slate-50">
+                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                  <Users size={18} className="text-blue-500" />
+                  Registered Guards ({guards.length})
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase">ID</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase">Name</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase">Guard ID</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase">Assigned Lot</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-200">
+                    {guards && guards.length > 0 ? guards.map((guard) => (
+                      <tr key={guard._id || guard.guardId} className="hover:bg-slate-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-slate-900">
+                          {guard._id ? guard._id.slice(-6) : guard.guardId}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="font-semibold text-slate-900">{guard.name}</span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="font-mono text-slate-700">{guard.guardId}</span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-slate-700">
+                          {guard.assignedParkingLot || 'Not Assigned'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            guard.status === 'ACTIVE' 
+                              ? 'bg-green-100 text-green-800' 
+                              : guard.status === 'INACTIVE'
+                              ? 'bg-gray-100 text-gray-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {guard.status === 'ACTIVE' ? '🟢 ACTIVE' : guard.status === 'INACTIVE' ? '⚫ INACTIVE' : '🔴 SUSPENDED'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <button
+                            onClick={async () => {
+                              try {
+                                const newStatus = guard.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+                                await axios.patch(`/api/guards/${guard._id}`, { status: newStatus });
+                                toast.info(`${guard.name} status updated to ${newStatus}`);
+                                refreshData();
+                              } catch (error) {
+                                toast.error('Failed to update guard status');
+                              }
+                            }}
+                            className="text-blue-600 hover:text-blue-800 font-medium"
+                          >
+                            Toggle Status
+                          </button>
+                        </td>
+                      </tr>
+                    )) : (
+                      <tr>
+                        <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
+                          No guards found. Add a new guard to get started.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        ) : activeTab === 'guards' ? (
           <GuardAuditPanel />
         ) : (
           <>

@@ -1,12 +1,29 @@
 import React, { useState } from 'react';
-import { Shield, Camera, Printer, Wifi, AlertCircle } from 'lucide-react';
+import { Shield, Camera, Printer, Wifi, AlertCircle, CreditCard } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { useAuth } from '../context/AuthContext';
+
+/**
+ * GuardAuth Component - Guard Authentication & Shift Management
+ * 
+ * Available Guard Credentials:
+ * - GUARD001 (Rajesh Kumar) / guard123 | 📞 +91-9876543210
+ * - GUARD002 (Amit Singh) / guard123 | 📞 +91-9876543211
+ * - GUARD003 (Suresh Sharma) / guard123 | 📞 +91-9876543212
+ * - GUARD004 (Vikram Patel) / guard123 | 📞 +91-9876543213
+ * - GUARD005 (Manoj Verma) / guard123 | 📞 +91-9876543214
+ * 
+ * All parking lots are loaded dynamically from the database.
+ * Guards are assigned to parking lots based on database entries.
+ */
 
 const GuardAuth = ({ onLoginSuccess }) => {
+  const { login } = useAuth();
   const [step, setStep] = useState('login'); // 'login' | 'systemCheck' | 'cashSetup'
   const [guardId, setGuardId] = useState('');
   const [password, setPassword] = useState('');
-  const [parkingLot, setParkingLot] = useState('Main Gate Parking');
+  const [parkingLot, setParkingLot] = useState('');
+  const [parkingLots, setParkingLots] = useState([]);
   const [openingCash, setOpeningCash] = useState('');
   const [systemHealth, setSystemHealth] = useState({
     camera: 'OK',
@@ -17,13 +34,90 @@ const GuardAuth = ({ onLoginSuccess }) => {
 
   const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
+  // Fetch parking lots from database on component mount
+  React.useEffect(() => {
+    const fetchParkingLots = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/parking-lots`);
+        const data = await response.json();
+        if (data.success && data.parkingLots.length > 0) {
+          setParkingLots(data.parkingLots);
+          setParkingLot(data.parkingLots[0].name); // Set first lot as default
+        }
+      } catch (error) {
+        console.error('Error fetching parking lots:', error);
+        toast.error('Failed to load parking lots');
+      }
+    };
+    fetchParkingLots();
+  }, [API_BASE]);
+
+  // RFID Card Simulation
+  const handleRFIDTap = () => {
+    toast.info('📲 RFID Card Detected! Auto-filling credentials...');
+    
+    // Simulate RFID card tap with dummy credentials
+    setGuardId('GUARD001');
+    setPassword('guard123');
+    
+    // Auto-submit after short delay
+    setTimeout(() => {
+      setStep('systemCheck');
+      toast.success('✅ RFID Authentication Successful!');
+    }, 1000);
+  };
+
   // PHASE 1: Login
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     if (!guardId.trim() || !password.trim()) {
       toast.error('Please enter Guard ID and Password');
       return;
     }
+
+    // Check for active session before proceeding
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/guard/active-session/${guardId.toUpperCase()}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.hasActiveSession && data.session) {
+        // Active session found - ask user if they want to resume
+        const resume = window.confirm(
+          `You have an active shift at ${data.session.parkingLot}.\n\n` +
+          `Started: ${new Date(data.session.startTime).toLocaleString()}\n` +
+          `Opening Cash: ₹${data.session.openingCash}\n\n` +
+          `Would you like to resume this session?`
+        );
+
+        if (resume) {
+          toast.success('Resuming active shift...');
+          login('GUARD', guardId.toUpperCase());
+          onLoginSuccess({
+            sessionId: data.session.sessionId,
+            guardId: data.session.guardId,
+            parkingLot: data.session.parkingLot,
+            systemHealth: data.session.systemHealthAtStart,
+            openingCash: data.session.openingCash
+          });
+          return;
+        } else {
+          toast.info('Please end your active shift first before starting a new one.');
+          setLoading(false);
+          return;
+        }
+      }
+    } catch (error) {
+      console.log('No active session check available, proceeding with normal flow');
+    } finally {
+      setLoading(false);
+    }
+
+    // No active session, proceed with normal flow
     setStep('systemCheck');
   };
 
@@ -66,6 +160,8 @@ const GuardAuth = ({ onLoginSuccess }) => {
 
       if (data.success) {
         toast.success('✅ Shift started successfully!');
+        // Update AuthContext with Guard role
+        login('GUARD', guardId.toUpperCase());
         onLoginSuccess({
           sessionId: data.session.sessionId,
           guardId: data.session.guardId,
@@ -76,6 +172,8 @@ const GuardAuth = ({ onLoginSuccess }) => {
       } else if (response.status === 400 && data.activeSession) {
         // Guard already has active session, resume it
         toast.info('Resuming your active shift...');
+        // Update AuthContext with Guard role
+        login('GUARD', data.activeSession.guardId);
         onLoginSuccess({
           sessionId: data.activeSession.sessionId,
           guardId: data.activeSession.guardId,
@@ -104,6 +202,25 @@ const GuardAuth = ({ onLoginSuccess }) => {
             </div>
             <h1 className="text-3xl font-bold text-white text-center mb-2">Guard Login</h1>
             <p className="text-gray-400 text-center text-sm mb-8">Secure Shift Authentication</p>
+
+            {/* RFID Button */}
+            <button
+              type="button"
+              onClick={handleRFIDTap}
+              className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-4 rounded-lg transition-all shadow-lg mb-6 flex items-center justify-center gap-3 border-2 border-purple-400"
+            >
+              <CreditCard size={24} />
+              <span>📲 Tap RFID Card</span>
+            </button>
+
+            <div className="relative mb-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-600"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-gray-800 text-gray-400">OR LOGIN MANUALLY</span>
+              </div>
+            </div>
 
             <form onSubmit={handleLogin} className="space-y-5">
               <div>
@@ -136,10 +253,14 @@ const GuardAuth = ({ onLoginSuccess }) => {
                   value={parkingLot}
                   onChange={(e) => setParkingLot(e.target.value)}
                   className="w-full bg-gray-900 border-2 border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:border-blue-500"
+                  required
                 >
-                  <option value="Main Gate Parking">Main Gate Parking</option>
-                  <option value="North Wing Parking">North Wing Parking</option>
-                  <option value="South Wing Parking">South Wing Parking</option>
+                  <option value="">Select Parking Lot</option>
+                  {parkingLots.map((lot) => (
+                    <option key={lot.id} value={lot.name}>
+                      {lot.name} ({lot.available}/{lot.capacity} available)
+                    </option>
+                  ))}
                 </select>
               </div>
 

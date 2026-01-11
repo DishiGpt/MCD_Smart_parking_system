@@ -123,58 +123,6 @@ app.get('/api/status', async (req, res) => {
   }
 });
 
-// 1.5 GET /api/occupancy-trends - Get hourly occupancy trends for today
-app.get('/api/occupancy-trends', async (req, res) => {
-  try {
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    
-    const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
-
-    // Get all transactions for today
-    const transactions = await Transaction.find({
-      entryTime: { $gte: startOfDay, $lte: endOfDay }
-    }).sort({ entryTime: 1 });
-
-    // Generate hourly data
-    const hourlyData = {};
-    for (let hour = 0; hour < 24; hour++) {
-      const hourKey = `${String(hour).padStart(2, '0')}:00`;
-      hourlyData[hourKey] = 0;
-    }
-
-    // Count vehicles active at each hour
-    transactions.forEach(tx => {
-      const entryHour = new Date(tx.entryTime).getHours();
-      const exitHour = tx.exitTime ? new Date(tx.exitTime).getHours() : 23;
-      
-      // Mark vehicle as present for each hour between entry and exit
-      for (let hour = entryHour; hour <= exitHour && hour < 24; hour++) {
-        const hourKey = `${String(hour).padStart(2, '0')}:00`;
-        hourlyData[hourKey]++;
-      }
-    });
-
-    // Convert to array format for recharts
-    const trends = Object.entries(hourlyData)
-      .filter(([time]) => {
-        const hour = parseInt(time.split(':')[0]);
-        return hour >= 6 && hour <= 22; // Only show 6 AM to 10 PM
-      })
-      .map(([name, vehicles]) => ({ name, vehicles }));
-
-    res.json({
-      success: true,
-      trends,
-      date: startOfDay.toISOString().split('T')[0]
-    });
-  } catch (error) {
-    console.error('Error fetching occupancy trends:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
 // 2. POST /api/entry - Handle vehicle entry
 app.post('/api/entry', async (req, res) => {
   try {
@@ -276,8 +224,9 @@ app.post('/api/calculate-fee', async (req, res) => {
     // Calculate parking duration and fee
     const currentTime = new Date();
     const durationInHours = Math.ceil((currentTime - transaction.entryTime) / (1000 * 60 * 60));
-    const feePerHour = 20; // ₹20 per hour
-    const totalFee = durationInHours * feePerHour;
+    const parkingLot = await ParkingLot.findOne({ name: transaction.parkingLot });
+    const hourlyRate = parkingLot?.hourlyRate || 50;
+    const totalFee = durationInHours * hourlyRate;
 
     console.log('✅ Fee calculated:', vehicleNumber, '| Duration:', durationInHours, 'hrs | Fee: ₹' + totalFee);
 
@@ -285,7 +234,7 @@ app.post('/api/calculate-fee', async (req, res) => {
       success: true,
       fee: totalFee,
       duration: durationInHours,
-      hourlyRate: feePerHour,
+      hourlyRate: hourlyRate,
       entryTime: transaction.entryTime,
       vehicleNumber: transaction.vehicleNumber,
       parkingLot: transaction.parkingLot
@@ -554,10 +503,9 @@ app.post('/api/manual-exit', async (req, res) => {
     const durationMs = exitTime - transaction.entryTime;
     const durationHours = Math.ceil(durationMs / (1000 * 60 * 60));
     
-    const feePerHour = 20; // ₹20 per hour
-    const fee = durationHours * feePerHour;
-    
     const parkingLot = await ParkingLot.findOne({ name: transaction.parkingLot });
+    const hourlyRate = parkingLot?.hourlyRate || 50;
+    const fee = durationHours * hourlyRate;
 
     // Update transaction
     transaction.exitTime = exitTime;
@@ -729,6 +677,7 @@ app.get('/api/guards', async (req, res) => {
     res.json({
       success: true,
       guards: guards.map(guard => ({
+        _id:guard._id,
         guardId: guard.guardId,
         name: guard.name,
         phoneNumber: guard.phoneNumber,
@@ -1317,6 +1266,45 @@ app.patch('/api/guards/:id', async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+
+// UPDATE guard details (edit)
+app.put('/api/guards/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, phoneNumber, assignedParkingLot, password, status } = req.body;
+
+    const update = {};
+    if (name !== undefined) update.name = name;
+    if (phoneNumber !== undefined) update.phoneNumber = phoneNumber;
+    if (assignedParkingLot !== undefined) update.assignedParkingLot = assignedParkingLot;
+    if (status !== undefined) update.status = status;
+
+    // only update password if provided
+    if (password && password.trim() !== '') update.password = password;
+
+    const guard = await Guard.findByIdAndUpdate(id, update, { new: true });
+    if (!guard) return res.status(404).json({ success: false, message: 'Guard not found' });
+
+    return res.json({ success: true, message: 'Guard updated successfully', guard });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// DELETE guard
+app.delete('/api/guards/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const guard = await Guard.findByIdAndDelete(id);
+    if (!guard) return res.status(404).json({ success: false, message: 'Guard not found' });
+
+    return res.json({ success: true, message: 'Guard deleted successfully' });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 
 
 // Start server

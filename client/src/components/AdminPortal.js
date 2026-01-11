@@ -14,6 +14,7 @@ const AdminPortal = () => {
   const [scannerMode] = useState('ENTRY');
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'guards' | 'staff'
   const [parkingLots, setParkingLots] = useState([]);
+  const [chartData, setChartData] = useState([]);
   
   // Staff Management State
   const [guards, setGuards] = useState([]);
@@ -27,12 +28,13 @@ const AdminPortal = () => {
   
   const refreshData = async () => {
     try {
-      const [alertsRes, transactionsRes, statusRes, guardsRes, parkingLotsRes] = await Promise.all([
+      const [alertsRes, transactionsRes, statusRes, guardsRes, parkingLotsRes, trendsRes] = await Promise.all([
         axios.get('/api/alerts'),
         axios.get('/api/transactions'),
         axios.get('/api/status'),
         axios.get('/api/guards'),
-        axios.get('/api/parking-lots')
+        axios.get('/api/parking-lots'),
+        axios.get('/api/occupancy-trends')
       ]);
       
       setAlerts(alertsRes.data.alerts || []);
@@ -40,6 +42,7 @@ const AdminPortal = () => {
       setStats(transactionsRes.data.stats || {});
       setParkingLots(parkingLotsRes.data.parkingLots || []);
       setGuards(guardsRes.data.guards || []);
+      setChartData(trendsRes.data.trends || []);
     } catch (error) {
       console.error('Error fetching admin data:', error);
     }
@@ -59,16 +62,6 @@ const AdminPortal = () => {
       console.error('Error resolving alert:', error);
     }
   };
-
-  // Mock chart data
-  const chartData = [
-    { name: '08:00', vehicles: 12 },
-    { name: '10:00', vehicles: 45 },
-    { name: '12:00', vehicles: 88 },
-    { name: '14:00', vehicles: 76 },
-    { name: '16:00', vehicles: 65 },
-    { name: '18:00', vehicles: 92 },
-  ];
 
   return (
     <div className="min-h-screen bg-slate-100 p-6">

@@ -19,7 +19,7 @@ import axios from 'axios';
 // ⚠️ CONFIGURATION
 // ============================================
 // Ensure this Ngrok link is still active (Black window is open)
-const API_URL = 'https://nondistinguished-unmaimed-alta.ngrok-free.dev'; 
+const API_URL = 'https://mcd-smart-parking-system.onrender.com'; 
 
 // ============================================
 // DUMMY DATA (Failsafe)

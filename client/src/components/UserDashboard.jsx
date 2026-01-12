@@ -92,6 +92,9 @@ const getOccupancyBg = (occupancy, capacity) => {
 // MAIN COMPONENT
 // ============================================
 const UserDashboard = () => {
+  // API Base URL Configuration
+  const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
   const [parkingLots, setParkingLots] = useState([]);
   const [filteredLots, setFilteredLots] = useState([]);
   const [userLocation, setUserLocation] = useState(null);
@@ -136,7 +139,7 @@ const UserDashboard = () => {
         setLoading(true);
         setError(null);
 
-        const response = await axios.get('/api/parking-lots');
+        const response = await axios.get(`${API_BASE}/parking-lots`);
         const lots = response.data.parkingLots || response.data || [];
 
         if (Array.isArray(lots) && lots.length > 0) {

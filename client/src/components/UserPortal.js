@@ -100,13 +100,16 @@ const NavigationModal = ({ lot, onClose }) => {
 };
 
 const UserPortal = () => {
+  // API Base URL Configuration
+  const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
   const [lots, setLots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedLot, setSelectedLot] = useState(null);
 
   const fetchLots = async () => {
     try {
-      const response = await axios.get('/api/status');
+      const response = await axios.get(`${API_BASE}/status`);
       setLots(response.data.parkingLots || []);
     } catch (e) {
       console.error(e);

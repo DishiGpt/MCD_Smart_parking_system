@@ -14,6 +14,9 @@ import Scanner from './Scanner';
 import GuardAuditPanel from './GuardAuditPanel';
 
 const AdminPortal = () => {
+  // API Base URL Configuration
+  const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
   const [stats, setStats] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -54,12 +57,12 @@ const AdminPortal = () => {
       setLoading(true);
       // ✅ FIX: Added 'trendsRes' to capture the 6th API call
       const [alertsRes, transactionsRes, statusRes, guardsRes, parkingLotsRes, trendsRes] = await Promise.all([
-        axios.get('/api/alerts'),
-        axios.get('/api/transactions'),
-        axios.get('/api/status'),
-        axios.get('/api/guards'),
-        axios.get('/api/parking-lots'),
-        axios.get('/api/occupancy-trends') // This was missing in the variable list
+        axios.get(`${API_BASE}/alerts`),
+        axios.get(`${API_BASE}/transactions`),
+        axios.get(`${API_BASE}/status`),
+        axios.get(`${API_BASE}/guards`),
+        axios.get(`${API_BASE}/parking-lots`),
+        axios.get(`${API_BASE}/occupancy-trends`) // This was missing in the variable list
       ]);
       
       setAlerts(alertsRes.data.alerts || []);
@@ -88,7 +91,7 @@ const AdminPortal = () => {
 
   const handleResolve = async (id) => {
     try {
-      await axios.patch(`/api/alerts/${id}/resolve`);
+      await axios.patch(`${API_BASE}/alerts/${id}/resolve`);
       toast.success('Alert resolved');
       refreshData();
     } catch (error) {
@@ -108,7 +111,7 @@ const AdminPortal = () => {
 
     try {
       setLoading(true);
-      const response = await axios.post('/api/guards', {
+      const response = await axios.post(`${API_BASE}/guards`, {
         guardId: newGuard.guardId,
         name: newGuard.name,
         password: newGuard.password,
@@ -132,7 +135,7 @@ const AdminPortal = () => {
   const handleToggleStatus = async (guard) => {
     try {
       const newStatus = guard.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-      const response = await axios.patch(`/api/guards/${guard._id}`, { status: newStatus });
+      const response = await axios.patch(`${API_BASE}/guards/${guard._id}`, { status: newStatus });
       if (response.data.success) {
         toast.info(`${guard.name} status updated to ${newStatus}`);
         refreshData();
@@ -172,7 +175,7 @@ const AdminPortal = () => {
         updateData.password = editForm.password;
       }
 
-      const response = await axios.put(`/api/guards/${editingGuard._id}`, updateData);
+      const response = await axios.put(`${API_BASE}/guards/${editingGuard._id}`, updateData);
       if (response.data.success) {
         toast.success(`Guard ${editForm.name} updated successfully!`);
         setShowEditModal(false);
@@ -196,7 +199,7 @@ const AdminPortal = () => {
     if (!deletingGuard) return;
     try {
       setLoading(true);
-      const response = await axios.delete(`/api/guards/${deletingGuard._id}`);
+      const response = await axios.delete(`${API_BASE}/guards/${deletingGuard._id}`);
       if (response.data.success) {
         toast.success(`Guard ${deletingGuard.name} deleted successfully`);
         setShowDeleteModal(false);

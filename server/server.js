@@ -1349,16 +1349,14 @@ app.get('/api/occupancy-trends', async (req, res) => {
 
 
 
-// ==================== VERCEL DEPLOYMENT CONFIG ====================
-// Vercel requires the app to be exported, not just listened to.
+// ==================== DEPLOYMENT CONFIG ====================
 
-if (process.env.NODE_ENV !== 'production') {
-  // Only listen on port if running locally (Laptop/Development)
-  app.listen(PORT, () => {
-    console.log(`🚀 Server is running on http://localhost:${PORT}`);
-    console.log(`📊 API Base URL: http://localhost:${PORT}/api`);
-  });
-}
+// Always listen on the port (Required for Render)
+// We bind to '0.0.0.0' to ensure external access
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server is running on port ${PORT}`);
+  console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+});
 
-// Export the Express app so Vercel can handle it
+// Export is technically not needed for Render, but doesn't hurt to keep
 module.exports = app;

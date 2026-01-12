@@ -1,3 +1,188 @@
+# MCD Smart Parking System
+
+> Smart Parking Management System — mobile, guard console, and backend API for ANPR/RFID-enabled parking management.
+
+## Project Summary
+- Applications:
+  - Web Client (Admin / Guard Console): `client/` — React, OCR-based ANPR scanner, admin analytics.
+  - Mobile App: `parking-mobile-app/` — Expo/React Native app for users to find nearby parking and navigate.
+  - Backend API: `server/` (entry: `server/server.js`) — Node.js/Express + MongoDB business logic for parking, transactions, guard shifts, hardware events.
+
+Core technologies: Node.js, Express, MongoDB (mongoose), React, Expo (React Native), Tesseract OCR, Leaflet, axios, ngrok/vercel for tunneling/deploy.
+
+Primary purpose: Provide an end-to-end smart parking solution where users discover parking, guards manage entry/exit via ANPR/manual flows, and admins audit operations and cash reconciliations.
+
+---
+
+## How It Works (High-level)
+
+- User Journey (Mobile):
+  - The mobile app requests device location using `expo-location`.
+  - The app fetches nearby parking lots from the backend (`/api/parking-lots`).
+  - Distances are computed client-side (Haversine formula) and results are sorted by proximity.
+  - User taps Navigate → deep-links to device maps or Google Maps with the parking coordinates.
+
+- Guard Journey (Guard Console):
+  - Guard logs in at the Guard Console (`/api/guard/login`) providing `guardId`, `password`, opening cash and system health.
+  - A `GuardSession` is created and marked `ACTIVE`. OCR runs live using `tesseract.js` to detect plates.
+  - ENTRY: Detected plates trigger `/api/entry` (or `/api/manual-entry` on failure), which creates a `Transaction` and increments occupancy.
+  - EXIT: Guard calculates fee (`/api/calculate-fee`) then confirms payment; `/api/exit` or `/api/manual-exit` closes the transaction and decrements occupancy.
+  - End shift: Guard posts `/api/guard/end-shift` with `closingCash` → system computes expected cash from completed CASH transactions, computes `cashShortage` and sets session status; critical shortages generate `Alert` records.
+
+- Data Journey (MongoDB):
+  - `ParkingLot` documents hold capacity, current occupancy and location.
+  - `Transaction` documents record entry/exit times, fee, payment mode, entry/exit methods, manual flags, and link to `guardSessionId` when applicable.
+  - `GuardSession` documents summarize shifts: opening/closing cash, expected vs actual collections, transaction counts, revenue breakdown, riskScore and flagged transactions.
+  - `Alert` documents are created for tampering, manual overrides, or cash shortages for admin review.
+
+---
+
+## Features
+
+- User App (Mobile)
+  - Find nearby parking by current location.
+  - Live occupancy percentages and color-coded availability.
+  - Navigate to parking via Maps / Google Maps.
+  - Offline fallback demo data when API unreachable.
+
+- Guard Console (Web)
+  - Live OCR-based ANPR scanning via webcam (`tesseract.js`).
+  - Manual entry/exit with reasons (flagged for audit).
+  - Payment collection flow (CASH/UPI/FASTAG) and receipt generation.
+  - Start/End shift flows with cash reconciliation and automatic alerts for shortages.
+  - Scan history and flagged transaction indicators.
+
+---
+
+## Tech Stack
+
+- Frontend (Web): React, react-router, tailwind, Tesseract OCR, axios, react-webcam, recharts
+- Mobile: Expo (React Native), `expo-location`, `Linking` for navigation, axios
+- Backend: Node.js, Express, Mongoose (MongoDB), dotenv, cors, body-parser
+- DevOps / Tunneling: ngrok (dev mobile testing), Vercel (server export-ready), MongoDB Atlas (recommended)
+
+---
+
+## Installation & Setup
+
+1. Clone repository
+
+```bash
+git clone <repo-url>
+cd MCD_Smart_parking_system
+```
+
+2. Backend (API)
+
+- Install dependencies (from repo root):
+
+```bash
+npm install
+```
+
+- Environment variables: create a `.env` file in the project root with at least:
+
+```
+MONGODB_URI=mongodb://localhost:27017/smart-parking
+PORT=5000
+NODE_ENV=development
+```
+
+- Start server locally:
+
+```bash
+npm run dev
+```
+
+Notes:
+- The server exports the Express `app` and supports deployment on Vercel (see `vercel.json`).
+- For production use a managed MongoDB (Atlas) and set `MONGODB_URI` accordingly.
+
+3. Web Client (Guard/Admin)
+
+```bash
+cd client
+npm install
+npm start
+```
+
+- Optionally set `REACT_APP_API_URL` in `client/.env` to point to deployed backend (defaults to `http://localhost:5000`).
+
+4. Mobile App (Expo)
+
+```bash
+cd parking-mobile-app
+npm install
+expo start
+```
+
+- The mobile app currently uses a hard-coded `API_URL` inside `parking-mobile-app/App.js` (an ngrok URL). Update that constant to point at your backend or run ngrok to expose local backend.
+- Recommended: open `parking-mobile-app/App.js` and replace `API_URL` with your backend base URL (e.g., `https://your-ngrok.ngrok.io`).
+
+---
+
+## Key API Endpoints (Quick Reference)
+
+| Route | Method | Description |
+|---|---:|---|
+| `/api/parking-lots` | GET | List parking lots and occupancy |
+| `/api/entry` | POST | Log vehicle entry (ANPR/hardware event) |
+| `/api/manual-entry` | POST | Guard-triggered manual entry (flagged) |
+| `/api/calculate-fee` | POST | Calculate fee for active transaction |
+| `/api/exit` | POST | Process vehicle exit (payment) |
+| `/api/manual-exit` | POST | Manual exit by guard (flagged + alert) |
+| `/api/hardware-event` | POST | Generic hardware event handler (RFID, ANPR feed) |
+| `/api/guard/login` | POST | Guard login & start shift (creates GuardSession) |
+| `/api/guard/end-shift` | POST | End shift & cash reconciliation |
+| `/api/guard/active-session/:guardId` | GET | Get active guard session and realtime stats |
+| `/api/scan-history` | GET | Recent transaction/scan history for a lot |
+| `/api/admin/guard-sessions` | GET | Admin audit list of guard sessions |
+
+For full route behavior, inspect `server/server.js` for input shape and response structure.
+
+---
+
+## Code Quality & Logic Highlights
+
+- Geospatial Sorting: Distance between user and parking lots in the mobile app is calculated using the Haversine formula (see `parking-mobile-app/App.js` → `calculateDistance`). This reliably sorts by straight-line distance for nearest parking.
+
+- Fee Calculation: Server computes duration (ceil to hours) and multiplies by hourly rate (parking lot hourlyRate or defaults). Key endpoints: `/api/calculate-fee`, `/api/exit`, `/api/manual-exit`.
+
+- Guard Shift Audit & Anti-Corruption Logic:
+  - `GuardSession` pre-save hook computes `manualOverrideRate` and `riskScore` based on:
+    - manual override rate thresholds (>20%, >40%),
+    - cash shortage percentage (>5%),
+    - system health failures (camera/printer/internet).
+  - On `/api/guard/end-shift`, server computes `systemCashExpected` by summing `fee` of all completed CASH `Transaction`s for the session, compares to reported `closingCash` (adjusted by `openingCash`) and creates a `Alert` for critical shortages (configurable threshold; current code: > Rs.50 triggers CRITICAL alert).
+  - Manual entries/exits are flagged and create alerts for admin review.
+
+- Important configuration notes:
+  - Set `MONGODB_URI` in `.env` (local or Atlas). Without it the server falls back to `mongodb://localhost:27017/smart-parking`.
+  - Mobile app uses a hard-coded `API_URL` (ngrok). Either expose local backend with ngrok and update `API_URL` in `parking-mobile-app/App.js`, or update mobile app to read from env variables.
+  - For local web dev, `client/package.json` sets `proxy` to `http://localhost:5000` so web client API calls can be made without configuring CORS during development.
+  - `vercel.json` is present and server exports `app`, enabling Vercel deployments. Ensure environment variables are configured in the Vercel dashboard.
+
+---
+
+## Next Recommended Improvements
+
+- Move mobile `API_URL` to a config or env variable and remove hard-coded ngrok URLs.
+- Hash guard passwords (currently stored in plaintext in `Guard` model) and add role-based auth tokens (JWT) for guard/admin actions.
+- Add server-side rate-limiting and stricter input validation to reduce abuse.
+- Add unit/integration tests for critical financial logic (fee calc, cash reconciliation, risk scoring).
+
+---
+
+If you want, I can now:
+- generate a compact architecture diagram (Mermaid or PNG)
+- update `parking-mobile-app/App.js` to read API base URL from an env or config file
+- add sample `.env.example` and secure password hashing for `Guard`
+
+Which of these would you like me to do next?
+
+---
+
+Generated: January 12, 2026
 # Smart Parking Management System
 
 A complete MERN Stack application for managing smart parking operations with real-time monitoring, security alerts, and hardware simulation capabilities.

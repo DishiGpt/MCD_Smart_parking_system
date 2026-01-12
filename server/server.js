@@ -1349,8 +1349,16 @@ app.get('/api/occupancy-trends', async (req, res) => {
 
 
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Server is running on http://localhost:${PORT}`);
-  console.log(`📊 API Base URL: http://localhost:${PORT}/api`);
-});
+// ==================== VERCEL DEPLOYMENT CONFIG ====================
+// Vercel requires the app to be exported, not just listened to.
+
+if (process.env.NODE_ENV !== 'production') {
+  // Only listen on port if running locally (Laptop/Development)
+  app.listen(PORT, () => {
+    console.log(`🚀 Server is running on http://localhost:${PORT}`);
+    console.log(`📊 API Base URL: http://localhost:${PORT}/api`);
+  });
+}
+
+// Export the Express app so Vercel can handle it
+module.exports = app;

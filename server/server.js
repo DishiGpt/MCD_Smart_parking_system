@@ -127,7 +127,7 @@ app.get('/api/status', async (req, res) => {
 app.post('/api/entry', async (req, res) => {
   try {
     const { vehicleNumber, parkingLotName, sessionId } = req.body;
-    console.log('📸 ANPR Scan received:', vehicleNumber);
+    console.log('📸 ANPR Scan received:', vehicleNumber, '| Lot:', parkingLotName);
     
     if (!vehicleNumber) {
       return res.status(400).json({ success: false, message: 'Vehicle number is required' });
@@ -135,6 +135,7 @@ app.post('/api/entry', async (req, res) => {
 
     // Find parking lot or use default
     const lotName = parkingLotName || 'Main Gate Parking';
+    console.log('   Using parking lot:', lotName);
     const parkingLot = await ParkingLot.findOne({ name: lotName });
     
     if (!parkingLot) {
@@ -843,6 +844,8 @@ app.get('/api/scan-history', async (req, res) => {
     
     const lotName = parkingLotName || 'Main Gate Parking';
     
+    console.log('📋 Fetching scan history for:', lotName);
+    
     // Fetch recent transactions for this parking lot
     const transactions = await Transaction.find({
       parkingLot: lotName
@@ -850,6 +853,8 @@ app.get('/api/scan-history', async (req, res) => {
     .sort({ entryTime: -1 })
     .limit(parseInt(limit))
     .select('vehicleNumber entryTime exitTime fee status entryMethod isManualEntry manualOverrideReason manualEntryBy flagged');
+    
+    console.log(`   Found ${transactions.length} transactions for ${lotName}`);
 
     const scans = transactions.map(tx => ({
       plate: tx.vehicleNumber,
@@ -1302,6 +1307,43 @@ app.delete('/api/guards/:id', async (req, res) => {
     return res.json({ success: true, message: 'Guard deleted successfully' });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Occupancy trend for today (counts how many vehicles are parked at each time bucket)
+app.get('/api/occupancy-trends', async (req, res) => {
+  try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    // Pull transactions that overlap today (entered before end of day, exited after start of day or still active)
+    const transactions = await Transaction.find({
+      entryTime: { $lte: todayEnd },
+      $or: [{ exitTime: null }, { exitTime: { $gte: todayStart } }]
+    }).select('entryTime exitTime');
+
+    // Keep same buckets as your UI demo chart
+    const buckets = [8, 10, 12, 14, 16, 18];
+
+    const trends = buckets.map((hour) => {
+      const t = new Date(todayStart);
+      t.setHours(hour, 0, 0, 0);
+
+      const vehicles = transactions.reduce((count, tx) => {
+        const entered = new Date(tx.entryTime) <= t;
+        const notExited = !tx.exitTime || new Date(tx.exitTime) > t;
+        return count + (entered && notExited ? 1 : 0);
+      }, 0);
+
+      return { name: `${String(hour).padStart(2, '0')}:00`, vehicles };
+    });
+
+    res.json({ success: true, trends });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 

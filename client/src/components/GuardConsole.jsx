@@ -152,9 +152,15 @@ const GuardConsole = () => {
 
         if (data.success) {
           toast.success(`Vehicle ${plateNumber} Entry Logged`);
+          // Immediately fetch scan history after entry
+          fetchScanHistory();
+          // Also fetch again after 1 second to ensure database updates are reflected
           setTimeout(() => fetchScanHistory(), 1000);
         } else {
-          toast.error(data.message);
+          // Show error with more context
+          toast.error(`${plateNumber}: ${data.message}`);
+          // Still refresh scan history to show current state
+          fetchScanHistory();
         }
       } else {
         // For EXIT, first calculate fee then show payment modal

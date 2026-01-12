@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: smart-parking-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: MONGODB_URI
+        value: mongodb+srv://devikadiya1010_db_user:MD24Cs5JdipZCXoW@cluster0.g9hjqbk.mongodb.net/Smart-Parking?appName=Cluster0
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000

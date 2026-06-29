@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Car, ShieldAlert, Video, LogOut, Home } from 'lucide-react';
+import { LayoutDashboard, ShieldAlert, Video, LogOut, Home } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
 
@@ -39,12 +39,6 @@ const Navbar = () => {
                 <span className="hidden sm:inline">Home</span>
               </NavLink>
             )}
-
-            {/* Driver Portal - Always visible */}
-            <NavLink to="/user" className={linkClass}>
-              <Car size={18} />
-              <span className="hidden sm:inline">Driver Portal</span>
-            </NavLink>
 
             {/* Guard Console - Visible to logged-in users */}
             {user && (

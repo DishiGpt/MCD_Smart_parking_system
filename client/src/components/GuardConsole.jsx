@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Webcam from 'react-webcam';
-import Tesseract from 'tesseract.js';
+import { createWorker } from 'tesseract.js';
 import { toast } from 'react-toastify';
 import GuardAuth from './GuardAuth';
 import { useAuth } from '../context/AuthContext';
@@ -26,6 +26,25 @@ const GuardConsole = () => {
   const [manualExitReason, setManualExitReason] = useState('CAMERA_GLITCH');
   const [loading, setLoading] = useState(false);
   const scanIntervalRef = useRef(null);
+  const workerRef = useRef(null);
+  const isScanningRef = useRef(false);
+
+  useEffect(() => {
+    let worker;
+    const initWorker = async () => {
+      worker = await createWorker('eng');
+      await worker.setParameters({
+        tessedit_char_whitelist: 
+          'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
+        tessedit_pageseg_mode: '7',  // Single line mode
+      });
+      workerRef.current = worker;
+    };
+    initWorker();
+    return () => {
+      if (worker) worker.terminate();
+    };
+  }, []);
 
   // Camera Health (OCR-independent)
   const [cameraStatus, setCameraStatus] = useState('INITIALIZING');
@@ -188,41 +207,78 @@ const GuardConsole = () => {
     }
   }, [mode, parkingLot, API_BASE, fetchScanHistory, sessionId]);
 
-  const scanPlate = useCallback(async () => {
-    try {
-      const screenshot = webcamRef.current?.getScreenshot();
-      if (!screenshot) return;
+  const extractPlate = (text) => {
+    if (!text) return null;
 
+    // Normalize common OCR substitutions
+    const normalized = text
+      .replace(/[^A-Z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const patterns = [
+      // Standard: DL 01 AB 1234 or DL01AB1234
+      /\b([A-Z]{2})\s?(\d{2})\s?([A-Z]{1,3})\s?(\d{4})\b/,
+      // Short: DL 01 1234
+      /\b([A-Z]{2})\s?(\d{2})\s?(\d{4})\b/,
+      // Temp/special: MH 12 1234
+      /\b([A-Z]{2})\s?(\d{1,2})\s?([A-Z]?)\s?(\d{3,4})\b/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = normalized.match(pattern);
+      if (match) {
+        // Join matched groups, remove spaces
+        return match
+          .slice(1)
+          .filter(Boolean)
+          .join('')
+          .replace(/\s+/g, '');
+      }
+    }
+    return null;
+  };
+
+  const scanPlate = useCallback(async () => {
+    // Skip if previous scan still running
+    if (isScanningRef.current) return;
+    // Skip if camera not ready
+    if (cameraStatus !== 'OK') return;
+    // Skip if worker not initialized
+    if (!workerRef.current) return;
+
+    const screenshot = webcamRef.current?.getScreenshot();
+    if (!screenshot) return;
+
+    isScanningRef.current = true;
+    try {
       console.log('📸 Running OCR scan...');
-      const { data } = await Tesseract.recognize(screenshot, 'eng');
+      const { data } = await workerRef.current.recognize(screenshot);
       const text = data.text.toUpperCase();
       console.log('📝 OCR completed:', text.substring(0, 100));
 
-      const plateRegex = /[A-Z]{2}\s?\d{1,2}\s?[A-Z]{1,2}\s?\d{4}|\b[A-Z]{2,3}\d{2,4}[A-Z]{1,3}\b/g;
-      const matches = text.match(plateRegex);
+      const plate = extractPlate(text);
 
-      if (matches && matches.length > 0) {
-        const plate = matches[0].replace(/\s+/g, '').trim();
+      if (plate) {
         console.log('✅ Plate detected:', plate);
-        
-        // Avoid duplicate scans within 5 seconds
-        if (lastScanned && lastScanned.number === plate && Date.now() - lastScanned.time < 5000) {
+        if (
+          lastScanned &&
+          lastScanned.number === plate &&
+          Date.now() - lastScanned.time < 5000
+        ) {
           console.log('⏭️ Duplicate ignored');
           return;
         }
-
         handlePlateDetected(plate);
       } else {
         console.log('ℹ️ No plate detected in this frame - will retry');
-        // NOTE: Not detecting a plate is NORMAL, not a failure
-        // OCR will keep trying automatically every 2 seconds
       }
     } catch (error) {
       console.error('⚠️ OCR error (will retry):', error.message);
-      // NOTE: OCR errors are logged but do NOT affect camera health
-      // Manual entry is NOT enabled due to OCR issues
+    } finally {
+      isScanningRef.current = false;
     }
-  }, [lastScanned, handlePlateDetected]);
+  }, [lastScanned, handlePlateDetected, cameraStatus]);
 
   useEffect(() => {
     if (!isScanning || !webcamRef.current) return;

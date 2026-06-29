@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 
 const AuthContext = createContext(null);
 
@@ -12,36 +12,15 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const loading = false; // In-memory state only
 
-  // Load user from localStorage on mount
-  useEffect(() => {
-    const savedUser = localStorage.getItem('parkingUser');
-    if (savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-      } catch (error) {
-        console.error('Error parsing saved user:', error);
-        localStorage.removeItem('parkingUser');
-      }
-    }
-    setLoading(false);
-  }, []);
-
-  const login = (role, name = '') => {
-    const userData = {
-      role: role, // 'ADMIN' or 'GUARD'
-      name: name || (role === 'ADMIN' ? 'Admin User' : 'Guard User'),
-      loginTime: new Date().toISOString()
-    };
-    setUser(userData);
-    localStorage.setItem('parkingUser', JSON.stringify(userData));
+  const login = (role, identifier) => {
+    setUser({ role, id: identifier });
   };
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('parkingUser');
-    localStorage.removeItem('guardSession'); // Also clear guard session if exists
+    localStorage.removeItem('guardSession'); // Clear guard session on logout
   };
 
   return (

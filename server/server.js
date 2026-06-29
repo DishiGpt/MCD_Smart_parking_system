@@ -889,12 +889,75 @@ app.get('/api/health', (req, res) => {
 
 // ==================== GUARD AUTHENTICATION & SHIFT MANAGEMENT ====================
 
+// New Unified login endpoint
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { identifier, password } = req.body;
+
+    console.log('👤 Unified login attempt for identifier:', identifier);
+
+    if (!identifier || !password) {
+      console.log('❌ Missing credentials');
+      return res.status(400).json({
+        success: false,
+        message: 'Identifier and password are required'
+      });
+    }
+
+    // 1. Check Admin Credentials
+    if (identifier === process.env.ADMIN_ID && password === process.env.ADMIN_PASSWORD) {
+      console.log('✅ Admin authenticated successfully');
+      return res.json({
+        success: true,
+        role: 'ADMIN',
+        name: 'Administrator'
+      });
+    }
+
+    // 2. Check Guard Collection
+    const guard = await Guard.findOne({ guardId: identifier.toUpperCase(), status: 'ACTIVE' });
+    if (!guard) {
+      console.log('❌ Guard not found or inactive:', identifier);
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid credentials'
+      });
+    }
+
+    if (guard.password !== password) {
+      console.log('❌ Guard password mismatch:', guard.guardId);
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid password'
+      });
+    }
+
+    if (!guard.assignedParkingLot) {
+      console.log('❌ Guard has no assigned parking lot:', guard.guardId);
+      return res.status(400).json({
+        success: false,
+        message: 'No parking lot assigned. Contact admin.'
+      });
+    }
+
+    console.log('✅ Guard authenticated successfully:', guard.guardId);
+    return res.json({
+      success: true,
+      role: 'GUARD',
+      guardId: guard.guardId,
+      guardName: guard.name,
+      assignedParkingLot: guard.assignedParkingLot
+    });
+  } catch (error) {
+    console.error('❌ ERROR in /api/auth/login:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 13. POST /api/guard/login - Guard authentication & shift start
 app.post('/api/guard/login', async (req, res) => {
   try {
-    const { guardId, password, parkingLot, openingCash, systemHealth } = req.body;
-    
-    console.log('🔐 Guard login attempt:', { guardId, parkingLot, hasPassword: !!password });
+    const { guardId, password, openingCash, systemHealth } = req.body;
     
     if (!guardId || !password) {
       console.log('❌ Missing credentials');
@@ -905,7 +968,7 @@ app.post('/api/guard/login', async (req, res) => {
     }
 
     // Authenticate guard against database
-    const guard = await Guard.findOne({ guardId: guardId.toUpperCase() });
+    const guard = await Guard.findOne({ guardId: guardId.toUpperCase(), status: 'ACTIVE' });
     
     if (!guard) {
       return res.status(401).json({
@@ -921,12 +984,14 @@ app.post('/api/guard/login', async (req, res) => {
       });
     }
 
-    if (guard.status !== 'ACTIVE') {
-      return res.status(403).json({
-        success: false,
-        message: '🔒 Guard account is ' + guard.status.toLowerCase()
+    if (!guard.assignedParkingLot) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No parking lot assigned. Contact admin.' 
       });
     }
+
+    console.log('🔐 Guard login attempt:', { guardId, parkingLot: guard.assignedParkingLot, hasPassword: !!password });
 
     // Check if guard has an active session
     const existingSession = await GuardSession.findOne({
@@ -945,13 +1010,7 @@ app.post('/api/guard/login', async (req, res) => {
 
     // Create new session
     const sessionId = `SHIFT-${Date.now()}-${guardId}`;
-    
-    // Use provided parking lot, or guard's assigned lot, or first available lot
-    let selectedParkingLot = parkingLot || guard.assignedParkingLot;
-    if (!selectedParkingLot) {
-      const firstLot = await ParkingLot.findOne();
-      selectedParkingLot = firstLot ? firstLot.name : 'Unassigned';
-    }
+    const selectedParkingLot = guard.assignedParkingLot;
     
     const session = new GuardSession({
       sessionId,

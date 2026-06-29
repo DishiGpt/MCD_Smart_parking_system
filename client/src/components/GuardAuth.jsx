@@ -1,29 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Shield, Camera, Printer, Wifi, AlertCircle, CreditCard } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useAuth } from '../context/AuthContext';
 
 /**
  * GuardAuth Component - Guard Authentication & Shift Management
- * 
- * Available Guard Credentials:
- * - GUARD001 (Rajesh Kumar) / guard123 | 📞 +91-9876543210
- * - GUARD002 (Amit Singh) / guard123 | 📞 +91-9876543211
- * - GUARD003 (Suresh Sharma) / guard123 | 📞 +91-9876543212
- * - GUARD004 (Vikram Patel) / guard123 | 📞 +91-9876543213
- * - GUARD005 (Manoj Verma) / guard123 | 📞 +91-9876543214
- * 
- * All parking lots are loaded dynamically from the database.
- * Guards are assigned to parking lots based on database entries.
  */
-
-const GuardAuth = ({ onLoginSuccess }) => {
+const GuardAuth = ({ onLoginSuccess, prefillGuardId, prefillGuardName, prefillParkingLot, prefillPassword }) => {
   const { login } = useAuth();
   const [step, setStep] = useState('login'); // 'login' | 'systemCheck' | 'cashSetup'
   const [guardId, setGuardId] = useState('');
   const [password, setPassword] = useState('');
-  const [parkingLot, setParkingLot] = useState('');
-  const [parkingLots, setParkingLots] = useState([]);
   const [openingCash, setOpeningCash] = useState('');
   const [systemHealth, setSystemHealth] = useState({
     camera: 'OK',
@@ -34,40 +21,44 @@ const GuardAuth = ({ onLoginSuccess }) => {
 
   const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-  // Fetch parking lots from database on component mount
-  React.useEffect(() => {
-    const fetchParkingLots = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/parking-lots`);
-        const data = await response.json();
-        if (data.success && data.parkingLots.length > 0) {
-          setParkingLots(data.parkingLots);
-          setParkingLot(data.parkingLots[0].name); // Set first lot as default
-        }
-      } catch (error) {
-        console.error('Error fetching parking lots:', error);
-        toast.error('Failed to load parking lots');
+  // Apply prefill props when present
+  useEffect(() => {
+    if (prefillGuardId) {
+      setGuardId(prefillGuardId);
+      if (prefillPassword) {
+        setPassword(prefillPassword);
       }
-    };
-    fetchParkingLots();
-  }, [API_BASE]);
+      setStep('systemCheck');
+    }
+  }, [prefillGuardId, prefillPassword]);
+
+  // If accessed directly without prefillGuardId, redirect to unified login page
+  // unless there's an active session in localStorage that the parent component is restoring
+  if (!prefillGuardId) {
+    if (localStorage.getItem('guardSession')) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-900">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
+        </div>
+      );
+    }
+    // No saved session, redirect to unified login page
+    window.location.href = '/login';
+    return null;
+  }
 
   // RFID Card Simulation
   const handleRFIDTap = () => {
     toast.info('📲 RFID Card Detected! Auto-filling credentials...');
-    
-    // Simulate RFID card tap with dummy credentials
     setGuardId('GUARD001');
     setPassword('guard123');
-    
-    // Auto-submit after short delay
     setTimeout(() => {
       setStep('systemCheck');
       toast.success('✅ RFID Authentication Successful!');
     }, 1000);
   };
 
-  // PHASE 1: Login
+  // PHASE 1: Login (Used when no prefill / standalone)
   const handleLogin = async (e) => {
     e.preventDefault();
     if (!guardId.trim() || !password.trim()) {
@@ -75,7 +66,6 @@ const GuardAuth = ({ onLoginSuccess }) => {
       return;
     }
 
-    // Check for active session before proceeding
     setLoading(true);
     try {
       const response = await fetch(`${API_BASE}/guard/active-session/${guardId.toUpperCase()}`, {
@@ -86,7 +76,6 @@ const GuardAuth = ({ onLoginSuccess }) => {
       const data = await response.json();
 
       if (data.success && data.hasActiveSession && data.session) {
-        // Active session found - ask user if they want to resume
         const resume = window.confirm(
           `You have an active shift at ${data.session.parkingLot}.\n\n` +
           `Started: ${new Date(data.session.startTime).toLocaleString()}\n` +
@@ -117,18 +106,15 @@ const GuardAuth = ({ onLoginSuccess }) => {
       setLoading(false);
     }
 
-    // No active session, proceed with normal flow
     setStep('systemCheck');
   };
 
   // PHASE 2: System Health Check
   const handleSystemCheck = () => {
     const hasFailures = Object.values(systemHealth).some(status => status === 'FAIL');
-    
     if (hasFailures) {
       toast.warning('⚠️ System failures detected. Manual mode enabled.', { autoClose: 3000 });
     }
-    
     setStep('cashSetup');
   };
 
@@ -150,7 +136,7 @@ const GuardAuth = ({ onLoginSuccess }) => {
         body: JSON.stringify({
           guardId: guardId.toUpperCase(),
           password,
-          parkingLot,
+          parkingLot: prefillParkingLot,
           openingCash: parseFloat(openingCash),
           systemHealth
         })
@@ -160,7 +146,6 @@ const GuardAuth = ({ onLoginSuccess }) => {
 
       if (data.success) {
         toast.success('✅ Shift started successfully!');
-        // Update AuthContext with Guard role
         login('GUARD', guardId.toUpperCase());
         onLoginSuccess({
           sessionId: data.session.sessionId,
@@ -170,9 +155,7 @@ const GuardAuth = ({ onLoginSuccess }) => {
           openingCash: parseFloat(openingCash)
         });
       } else if (response.status === 400 && data.activeSession) {
-        // Guard already has active session, resume it
         toast.info('Resuming your active shift...');
-        // Update AuthContext with Guard role
         login('GUARD', data.activeSession.guardId);
         onLoginSuccess({
           sessionId: data.activeSession.sessionId,
@@ -192,230 +175,221 @@ const GuardAuth = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center p-4">
-      <div className="max-w-md w-full">
-        {/* STEP 1: LOGIN */}
-        {step === 'login' && (
-          <div className="bg-gray-800 rounded-2xl border-2 border-blue-500 shadow-2xl p-8">
-            <div className="flex items-center justify-center mb-6">
-              <Shield className="text-blue-400" size={48} />
-            </div>
-            <h1 className="text-3xl font-bold text-white text-center mb-2">Guard Login</h1>
-            <p className="text-gray-400 text-center text-sm mb-8">Secure Shift Authentication</p>
-
-            {/* RFID Button */}
-            <button
-              type="button"
-              onClick={handleRFIDTap}
-              className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-4 rounded-lg transition-all shadow-lg mb-6 flex items-center justify-center gap-3 border-2 border-purple-400"
-            >
-              <CreditCard size={24} />
-              <span>📲 Tap RFID Card</span>
-            </button>
-
-            <div className="relative mb-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-600"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-gray-800 text-gray-400">OR LOGIN MANUALLY</span>
-              </div>
-            </div>
-
-            <form onSubmit={handleLogin} className="space-y-5">
-              <div>
-                <label className="block text-sm font-bold text-gray-300 mb-2">Guard ID</label>
-                <input
-                  type="text"
-                  value={guardId}
-                  onChange={(e) => setGuardId(e.target.value.toUpperCase())}
-                  placeholder="GUARD001"
-                  className="w-full bg-gray-900 border-2 border-gray-600 text-white px-4 py-3 rounded-lg font-mono focus:outline-none focus:border-blue-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-gray-300 mb-2">Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-gray-900 border-2 border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:border-blue-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-gray-300 mb-2">Parking Lot</label>
-                <select
-                  value={parkingLot}
-                  onChange={(e) => setParkingLot(e.target.value)}
-                  className="w-full bg-gray-900 border-2 border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:border-blue-500"
-                  required
-                >
-                  <option value="">Select Parking Lot</option>
-                  {parkingLots.map((lot) => (
-                    <option key={lot.id} value={lot.name}>
-                      {lot.name} ({lot.available}/{lot.capacity} available)
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition-all shadow-lg"
-              >
-                Next: System Check
-              </button>
-            </form>
+    <div className="max-w-md w-full mx-auto">
+      {/* STEP 1: LOGIN */}
+      {step === 'login' && (
+        <div className="bg-gray-800 rounded-2xl border-2 border-blue-500 shadow-2xl p-8">
+          <div className="flex items-center justify-center mb-6">
+            <Shield className="text-blue-400" size={48} />
           </div>
-        )}
+          <h1 className="text-3xl font-bold text-white text-center mb-2">Guard Login</h1>
+          <p className="text-gray-400 text-center text-sm mb-8">Secure Shift Authentication</p>
 
-        {/* STEP 2: SYSTEM HEALTH CHECK */}
-        {step === 'systemCheck' && (
-          <div className="bg-gray-800 rounded-2xl border-2 border-yellow-500 shadow-2xl p-8">
-            <h2 className="text-2xl font-bold text-white mb-6 text-center">System Health Check</h2>
-            
-            <div className="space-y-4 mb-8">
-              <div className="flex items-center justify-between bg-gray-900 p-4 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <Camera className="text-blue-400" size={24} />
-                  <span className="text-white font-semibold">Camera</span>
-                </div>
-                <button
-                  onClick={() => setSystemHealth({ ...systemHealth, camera: systemHealth.camera === 'OK' ? 'FAIL' : 'OK' })}
-                  className={`px-4 py-2 rounded-lg font-bold ${
-                    systemHealth.camera === 'OK' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
-                  }`}
-                >
-                  {systemHealth.camera}
-                </button>
-              </div>
+          <button
+            type="button"
+            onClick={handleRFIDTap}
+            className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-4 rounded-lg transition-all shadow-lg mb-6 flex items-center justify-center gap-3 border-2 border-purple-400"
+          >
+            <CreditCard size={24} />
+            <span>📲 Tap RFID Card</span>
+          </button>
 
-              <div className="flex items-center justify-between bg-gray-900 p-4 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <Printer className="text-blue-400" size={24} />
-                  <span className="text-white font-semibold">Printer</span>
-                </div>
-                <button
-                  onClick={() => setSystemHealth({ ...systemHealth, printer: systemHealth.printer === 'OK' ? 'FAIL' : 'OK' })}
-                  className={`px-4 py-2 rounded-lg font-bold ${
-                    systemHealth.printer === 'OK' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
-                  }`}
-                >
-                  {systemHealth.printer}
-                </button>
-              </div>
+          <div className="relative mb-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-600"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-gray-800 text-gray-400">OR LOGIN MANUALLY</span>
+            </div>
+          </div>
 
-              <div className="flex items-center justify-between bg-gray-900 p-4 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <Wifi className="text-blue-400" size={24} />
-                  <span className="text-white font-semibold">Internet</span>
-                </div>
-                <button
-                  onClick={() => setSystemHealth({ ...systemHealth, internet: systemHealth.internet === 'OK' ? 'FAIL' : 'OK' })}
-                  className={`px-4 py-2 rounded-lg font-bold ${
-                    systemHealth.internet === 'OK' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
-                  }`}
-                >
-                  {systemHealth.internet}
-                </button>
-              </div>
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div>
+              <label className="block text-sm font-bold text-gray-300 mb-2">Guard ID</label>
+              <input
+                type="text"
+                value={guardId}
+                onChange={(e) => setGuardId(e.target.value.toUpperCase())}
+                placeholder="GUARD001"
+                className="w-full bg-gray-900 border-2 border-gray-600 text-white px-4 py-3 rounded-lg font-mono focus:outline-none focus:border-blue-500"
+                required
+              />
             </div>
 
-            {Object.values(systemHealth).some(s => s === 'FAIL') && (
-              <div className="bg-yellow-900/50 border border-yellow-600 rounded-lg p-4 mb-6 flex items-start gap-3">
-                <AlertCircle className="text-yellow-400 flex-shrink-0" size={20} />
-                <p className="text-yellow-200 text-sm">
-                  System failures detected. Manual mode will be enabled for this shift.
-                </p>
+            <div>
+              <label className="block text-sm font-bold text-gray-300 mb-2">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full bg-gray-900 border-2 border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:border-blue-500"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition-all shadow-lg"
+            >
+              Next: System Check
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* STEP 2: SYSTEM HEALTH CHECK */}
+      {step === 'systemCheck' && (
+        <div className="bg-gray-800 rounded-2xl border-2 border-yellow-500 shadow-2xl p-8">
+          <h2 className="text-2xl font-bold text-white mb-6 text-center">System Health Check</h2>
+          
+          <div className="space-y-4 mb-8">
+            <div className="flex items-center justify-between bg-gray-900 p-4 rounded-lg">
+              <div className="flex items-center gap-3">
+                <Camera className="text-blue-400" size={24} />
+                <span className="text-white font-semibold">Camera</span>
               </div>
-            )}
+              <button
+                onClick={() => setSystemHealth({ ...systemHealth, camera: systemHealth.camera === 'OK' ? 'FAIL' : 'OK' })}
+                className={`px-4 py-2 rounded-lg font-bold ${
+                  systemHealth.camera === 'OK' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+                }`}
+              >
+                {systemHealth.camera}
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between bg-gray-900 p-4 rounded-lg">
+              <div className="flex items-center gap-3">
+                <Printer className="text-blue-400" size={24} />
+                <span className="text-white font-semibold">Printer</span>
+              </div>
+              <button
+                onClick={() => setSystemHealth({ ...systemHealth, printer: systemHealth.printer === 'OK' ? 'FAIL' : 'OK' })}
+                className={`px-4 py-2 rounded-lg font-bold ${
+                  systemHealth.printer === 'OK' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+                }`}
+              >
+                {systemHealth.printer}
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between bg-gray-900 p-4 rounded-lg">
+              <div className="flex items-center gap-3">
+                <Wifi className="text-blue-400" size={24} />
+                <span className="text-white font-semibold">Internet</span>
+              </div>
+              <button
+                onClick={() => setSystemHealth({ ...systemHealth, internet: systemHealth.internet === 'OK' ? 'FAIL' : 'OK' })}
+                className={`px-4 py-2 rounded-lg font-bold ${
+                  systemHealth.internet === 'OK' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+                }`}
+              >
+                {systemHealth.internet}
+              </button>
+            </div>
+          </div>
+
+          {Object.values(systemHealth).some(s => s === 'FAIL') && (
+            <div className="bg-yellow-900/50 border border-yellow-600 rounded-lg p-4 mb-6 flex items-start gap-3">
+              <AlertCircle className="text-yellow-400 flex-shrink-0" size={20} />
+              <p className="text-yellow-200 text-sm">
+                System failures detected. Manual mode will be enabled for this shift.
+              </p>
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                if (prefillGuardId) {
+                  // Simply redirect/reset to login steps if needed
+                  window.location.reload();
+                } else {
+                  setStep('login');
+                }
+              }}
+              className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition-all"
+            >
+              Back
+            </button>
+            <button
+              onClick={handleSystemCheck}
+              className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 rounded-lg transition-all"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 3: OPENING CASH */}
+      {step === 'cashSetup' && (
+        <div className="bg-gray-800 rounded-2xl border-2 border-green-500 shadow-2xl p-8">
+          <h2 className="text-2xl font-bold text-white mb-2 text-center">Opening Cash Balance</h2>
+          <p className="text-gray-400 text-center text-sm mb-8">Count cash in drawer before shift</p>
+
+          <form onSubmit={handleStartShift} className="space-y-6">
+            <div>
+              <label className="block text-sm font-bold text-gray-300 mb-2">Opening Cash Amount (₹)</label>
+              <input
+                type="number"
+                value={openingCash}
+                onChange={(e) => setOpeningCash(e.target.value)}
+                placeholder="0"
+                min="0"
+                step="1"
+                className="w-full bg-gray-900 border-2 border-gray-600 text-white px-4 py-4 rounded-lg text-2xl font-bold text-center focus:outline-none focus:border-green-500"
+                required
+              />
+              <p className="text-gray-500 text-xs mt-2 text-center">
+                This will be used for end-of-shift reconciliation
+              </p>
+            </div>
+
+            <div className="bg-gray-900 p-4 rounded-lg space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Guard ID:</span>
+                <span className="text-white font-bold">{guardId}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Guard Name:</span>
+                <span className="text-white font-bold">{prefillGuardName || guardId}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Parking Lot:</span>
+                <span className="text-white font-bold">{prefillParkingLot || 'Assigned Lot'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">System Status:</span>
+                <span className={`font-bold ${
+                  Object.values(systemHealth).every(s => s === 'OK') ? 'text-green-400' : 'text-yellow-400'
+                }`}>
+                  {Object.values(systemHealth).every(s => s === 'OK') ? 'ALL OK' : 'MANUAL MODE'}
+                </span>
+              </div>
+            </div>
 
             <div className="flex gap-3">
               <button
-                onClick={() => setStep('login')}
+                type="button"
+                onClick={() => setStep('systemCheck')}
                 className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition-all"
+                disabled={loading}
               >
                 Back
               </button>
               <button
-                onClick={handleSystemCheck}
-                className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 rounded-lg transition-all"
+                type="submit"
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition-all shadow-lg disabled:opacity-50"
+                disabled={loading}
               >
-                Continue
+                {loading ? 'Starting...' : '🚀 Start Shift'}
               </button>
             </div>
-          </div>
-        )}
-
-        {/* STEP 3: OPENING CASH */}
-        {step === 'cashSetup' && (
-          <div className="bg-gray-800 rounded-2xl border-2 border-green-500 shadow-2xl p-8">
-            <h2 className="text-2xl font-bold text-white mb-2 text-center">Opening Cash Balance</h2>
-            <p className="text-gray-400 text-center text-sm mb-8">Count cash in drawer before shift</p>
-
-            <form onSubmit={handleStartShift} className="space-y-6">
-              <div>
-                <label className="block text-sm font-bold text-gray-300 mb-2">Opening Cash Amount (₹)</label>
-                <input
-                  type="number"
-                  value={openingCash}
-                  onChange={(e) => setOpeningCash(e.target.value)}
-                  placeholder="0"
-                  min="0"
-                  step="1"
-                  className="w-full bg-gray-900 border-2 border-gray-600 text-white px-4 py-4 rounded-lg text-2xl font-bold text-center focus:outline-none focus:border-green-500"
-                  required
-                />
-                <p className="text-gray-500 text-xs mt-2 text-center">
-                  This will be used for end-of-shift reconciliation
-                </p>
-              </div>
-
-              <div className="bg-gray-900 p-4 rounded-lg space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Guard ID:</span>
-                  <span className="text-white font-bold">{guardId}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Parking Lot:</span>
-                  <span className="text-white font-bold">{parkingLot}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">System Status:</span>
-                  <span className={`font-bold ${
-                    Object.values(systemHealth).every(s => s === 'OK') ? 'text-green-400' : 'text-yellow-400'
-                  }`}>
-                    {Object.values(systemHealth).every(s => s === 'OK') ? 'ALL OK' : 'MANUAL MODE'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setStep('systemCheck')}
-                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition-all"
-                  disabled={loading}
-                >
-                  Back
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition-all shadow-lg disabled:opacity-50"
-                  disabled={loading}
-                >
-                  {loading ? 'Starting...' : '🚀 Start Shift'}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-      </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 };

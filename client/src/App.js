@@ -3,11 +3,10 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import LandingPage from './components/LandingPage';
-import UserPortal from './components/UserPortal';
 import AdminPortal from './components/AdminPortal';
 import SimulatorPortal from './components/SimulatorPortal';
 import GuardConsole from './components/GuardConsole';
-import GuardAuth from './components/GuardAuth';
+import LoginPage from './components/LoginPage';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -25,9 +24,9 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
     );
   }
 
-  // Not logged in -> Redirect to landing page
+  // Not logged in -> Redirect to login page
   if (!user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   // Check if user's role is allowed
@@ -51,9 +50,8 @@ function AppRoutes() {
         <Routes>
           {/* Public Routes */}
           <Route path="/" element={<LandingPage />} />
-          <Route path="/guard-login" element={<Navigate to="/guard" replace />} />
+          <Route path="/login" element={<LoginPage />} />
           <Route path="/guard" element={<GuardConsole />} />
-          <Route path="/user" element={<UserPortal />} />
           <Route path="/simulator" element={<SimulatorPortal />} />
 
           {/* Protected Routes */}

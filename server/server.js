@@ -1411,11 +1411,12 @@ app.get('/api/occupancy-trends', async (req, res) => {
 // ==================== DEPLOYMENT CONFIG ====================
 
 // Always listen on the port (Required for Render)
-// We bind to '0.0.0.0' to ensure external access
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server is running on port ${PORT}`);
-  console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server is running on port ${PORT}`);
+    console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+  });
+}
 
-// Export is technically not needed for Render, but doesn't hurt to keep
+// Export the Express app for serverless deployment
 module.exports = app;

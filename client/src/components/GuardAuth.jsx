@@ -73,7 +73,13 @@ const GuardAuth = ({ onLoginSuccess, prefillGuardId, prefillGuardName, prefillPa
         headers: { 'Content-Type': 'application/json' }
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (parseError) {
+        console.error('Failed to parse active session JSON:', parseError);
+      }
 
       if (data.success && data.hasActiveSession && data.session) {
         const resume = window.confirm(
@@ -142,7 +148,16 @@ const GuardAuth = ({ onLoginSuccess, prefillGuardId, prefillGuardName, prefillPa
         })
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (parseError) {
+        console.error('Failed to parse shift start JSON:', parseError);
+        toast.error('Server returned an unexpected response. Please check your backend connection.');
+        setLoading(false);
+        return;
+      }
 
       if (data.success) {
         toast.success('✅ Shift started successfully!');

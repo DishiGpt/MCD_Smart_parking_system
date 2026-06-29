@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Shield } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -15,10 +15,21 @@ const LoginPage = () => {
   const [guardVerified, setGuardVerified] = useState(false);
   const [guardData, setGuardData] = useState(null);
 
-  const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+  const API_BASE = process.env.REACT_APP_API_URL;
+
+  useEffect(() => {
+    if (!API_BASE) {
+      console.warn('⚠️ REACT_APP_API_URL environment variable is missing!');
+      setError('Configuration error: API URL is not set. Please contact administrator.');
+    }
+  }, [API_BASE]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (!API_BASE) {
+      setError('Configuration error: API URL is not set.');
+      return;
+    }
     setLoading(true);
     setError('');
 
@@ -29,7 +40,17 @@ const LoginPage = () => {
         body: JSON.stringify({ identifier, password }),
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      if (!text) {
+        throw new Error('Empty response from server');
+      }
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (parseError) {
+        throw new Error(text || 'Invalid server response');
+      }
 
       if (response.ok && data.success) {
         if (data.role === 'ADMIN') {

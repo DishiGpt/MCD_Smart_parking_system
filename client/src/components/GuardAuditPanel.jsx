@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
 
 const GuardAuditPanel = () => {
@@ -8,11 +8,7 @@ const GuardAuditPanel = () => {
 
   const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-  useEffect(() => {
-    fetchGuardSessions();
-  }, []);
-
-  const fetchGuardSessions = async () => {
+  const fetchGuardSessions = useCallback(async () => {
     setLoading(true);
     try {
       const response = await fetch(`${API_BASE}/admin/guard-sessions`);
@@ -37,7 +33,11 @@ const GuardAuditPanel = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [API_BASE]);
+
+  useEffect(() => {
+    fetchGuardSessions();
+  }, [fetchGuardSessions]);
 
   const getRiskColor = (riskScore) => {
     if (riskScore >= 50) return 'text-red-500 bg-red-900/20 border-red-500';

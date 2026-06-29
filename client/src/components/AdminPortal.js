@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { 
-  AlertTriangle, CheckCircle, IndianRupee, Car, BarChart3, 
-  Bell, X, Shield, UserPlus, Users, Edit2, Trash2 
+  AlertTriangle, IndianRupee, Car, BarChart3, 
+  Bell, Shield, UserPlus, Users, Edit2, Trash2 
 } from 'lucide-react';
 import axios from 'axios';
 import { 
@@ -52,11 +52,11 @@ const AdminPortal = () => {
   const [deletingGuard, setDeletingGuard] = useState(null);
 
   // 🔄 REFRESH DATA (Fixed Logic)
-  const refreshData = async () => {
+  const refreshData = useCallback(async () => {
     try {
       setLoading(true);
       // ✅ FIX: Added 'trendsRes' to capture the 6th API call
-      const [alertsRes, transactionsRes, statusRes, guardsRes, parkingLotsRes, trendsRes] = await Promise.all([
+      const [alertsRes, transactionsRes, , guardsRes, parkingLotsRes, trendsRes] = await Promise.all([
         axios.get(`${API_BASE}/alerts`),
         axios.get(`${API_BASE}/transactions`),
         axios.get(`${API_BASE}/status`),
@@ -81,13 +81,13 @@ const AdminPortal = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [API_BASE, stats]);
 
   useEffect(() => {
     refreshData();
     const interval = setInterval(refreshData, 30000); // Refresh every 30 seconds
     return () => clearInterval(interval);
-  }, []);
+  }, [refreshData]);
 
   const handleResolve = async (id) => {
     try {
@@ -129,19 +129,6 @@ const AdminPortal = () => {
       toast.error(error.response?.data?.message || 'Failed to add guard');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleToggleStatus = async (guard) => {
-    try {
-      const newStatus = guard.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-      const response = await axios.patch(`${API_BASE}/guards/${guard._id}`, { status: newStatus });
-      if (response.data.success) {
-        toast.info(`${guard.name} status updated to ${newStatus}`);
-        refreshData();
-      }
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to update guard status');
     }
   };
 

@@ -280,8 +280,9 @@ app.post('/api/exit', async (req, res) => {
     // Calculate parking duration and fee
     const exitTime = new Date();
     const durationInHours = Math.ceil((exitTime - transaction.entryTime) / (1000 * 60 * 60));
-    const feePerHour = 20; // ₹20 per hour
-    const totalFee = durationInHours * feePerHour;
+    const parkingLot = await ParkingLot.findOne({ name: transaction.parkingLot });
+    const hourlyRate = parkingLot?.hourlyRate || 50;
+    const totalFee = durationInHours * hourlyRate;
 
     // Update transaction with payment details
     transaction.exitTime = exitTime;

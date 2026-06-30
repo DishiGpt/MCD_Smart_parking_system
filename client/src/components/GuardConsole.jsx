@@ -779,10 +779,6 @@ const GuardConsole = () => {
                   <span className="text-gray-400">Expected UPI:</span>
                   <span className="font-bold text-indigo-400">₹{latestSessionDetails?.upiCollected || 0}</span>
                 </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-400">Expected FASTag:</span>
-                  <span className="font-bold text-purple-400">₹{latestSessionDetails?.fastagCollected || 0}</span>
-                </div>
                 <div className="flex justify-between border-t border-gray-700 pt-2 font-bold">
                   <span className="text-white">Expected Closing Cash:</span>
                   <span className="text-yellow-400">

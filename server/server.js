@@ -296,7 +296,6 @@ app.post('/api/exit', async (req, res) => {
     console.log('✅ Receipt generated:', transaction.receiptNumber);
 
     // Update parking lot occupancy
-    const parkingLot = await ParkingLot.findOne({ name: transaction.parkingLot });
     if (parkingLot) {
       parkingLot.currentOccupancy = Math.max(0, parkingLot.currentOccupancy - 1);
       await parkingLot.save();

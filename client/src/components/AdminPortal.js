@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { 
   AlertTriangle, IndianRupee, Car, BarChart3, 
   Bell, Shield, UserPlus, Users, Edit2, Trash2 
@@ -51,6 +51,8 @@ const AdminPortal = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingGuard, setDeletingGuard] = useState(null);
 
+  const statsLoadedRef = useRef(false);
+
   // 🔄 REFRESH DATA (Fixed Logic)
   const refreshData = useCallback(async (showLoader = false) => {
     try {
@@ -73,15 +75,16 @@ const AdminPortal = () => {
       
       // ✅ FIX: Set the chart data correctly
       setChartData(trendsRes.data.trends || []);
+      statsLoadedRef.current = true;
 
     } catch (error) {
       console.error('Error fetching admin data:', error);
       // Only show toast on first load to avoid spamming on auto-refresh
-      if(!stats) toast.error('Failed to connect to server');
+      if(!statsLoadedRef.current) toast.error('Failed to connect to server');
     } finally {
       if (showLoader) setActionLoading(false);
     }
-  }, [API_BASE, stats]);
+  }, [API_BASE]);
 
   useEffect(() => {
     refreshData(true); // Show loader on initial mount

@@ -121,8 +121,8 @@ const AdminPortal = () => {
       });
 
       if (response.data.success) {
-        setNewGuard({ name: '', guardId: '', password: '', phoneNumber: '', assignedLot: '' });
         toast.success(`Guard ${newGuard.name} added successfully!`);
+        setNewGuard({ name: '', guardId: '', password: '', phoneNumber: '', assignedLot: '' });
         refreshData();
       }
     } catch (error) {

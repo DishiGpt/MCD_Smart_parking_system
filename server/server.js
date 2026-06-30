@@ -354,15 +354,10 @@ app.post('/api/manual-entry', async (req, res) => {
       });
     }
 
-    // 🔒 SECURITY: Verify camera status indicates actual failure
+    // 🔒 SECURITY: Verify camera status indicates actual failure (logged but not blocking)
     const allowedCameraStatuses = ['NO_CAMERA', 'PERMISSION_DENIED', 'STREAM_ERROR'];
     if (cameraStatus && !allowedCameraStatuses.includes(cameraStatus)) {
-      console.log('❌ Camera operational, manual entry blocked. Status:', cameraStatus);
-      return res.status(403).json({ 
-        success: false, 
-        message: '🔒 Manual entry denied. Camera system is operational.',
-        cameraStatus: cameraStatus
-      });
+      console.log('⚠️ Camera operational but manual entry allowed for edge cases. Status:', cameraStatus);
     }
 
     const lotName = parkingLotName || 'Main Gate Parking';
@@ -887,6 +882,16 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// System status endpoint
+app.get('/api/status', (req, res) => {
+  res.json({
+    success: true,
+    status: 'OK',
+    message: 'System is running smoothly',
+    timestamp: new Date()
+  });
+});
+
 // ==================== GUARD AUTHENTICATION & SHIFT MANAGEMENT ====================
 
 // New Unified login endpoint
@@ -1076,8 +1081,21 @@ app.post('/api/guard/end-shift', async (req, res) => {
     });
 
     const systemCashExpected = cashTransactions.reduce((sum, tx) => sum + tx.fee, 0);
+    const expectedClosingCash = session.openingCash + systemCashExpected;
     const actualClosingCash = closingCash || 0;
-    const cashShortage = systemCashExpected - (actualClosingCash - session.openingCash);
+
+    // Validate that closing cash matches expected cash exactly
+    if (actualClosingCash !== expectedClosingCash) {
+      console.log(`❌ Cash reconciliation failed. Expected: ₹${expectedClosingCash}, Entered: ₹${actualClosingCash}`);
+      return res.status(400).json({
+        success: false,
+        message: `Cash reconciliation failed. Expected Closing Cash: ₹${expectedClosingCash}, Entered: ₹${actualClosingCash}. Please reconcile before closing the shift.`,
+        expected: expectedClosingCash,
+        actual: actualClosingCash
+      });
+    }
+
+    const cashShortage = 0;
 
     // Get all transactions for this session
     const allTransactions = await Transaction.find({ guardSessionId: sessionId });
@@ -1248,10 +1266,10 @@ app.post('/api/guards', async (req, res) => {
   try {
     const { guardId, name, password, phoneNumber, assignedParkingLot, status } = req.body;
     
-    if (!guardId || !name || !password) {
+    if (!guardId || !name || !password || !phoneNumber) {
       return res.status(400).json({
         success: false,
-        message: 'Guard ID, name, and password are required'
+        message: 'Guard ID, name, password, and phone number are required'
       });
     }
 

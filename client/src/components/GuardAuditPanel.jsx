@@ -166,19 +166,19 @@ const GuardAuditPanel = () => {
                             <div className="bg-gray-900 rounded-lg p-3">
                               <p className="text-xs text-gray-400 mb-1">CASH Revenue</p>
                               <p className="text-lg font-bold text-green-400">
-                                {formatCurrency(session.revenueBreakdown?.CASH || 0)}
+                                {formatCurrency(session.revenueBreakdown?.CASH || session.revenueBreakdown?.cash || 0)}
                               </p>
                             </div>
                             <div className="bg-gray-900 rounded-lg p-3">
                               <p className="text-xs text-gray-400 mb-1">UPI Revenue</p>
                               <p className="text-lg font-bold text-blue-400">
-                                {formatCurrency(session.revenueBreakdown?.UPI || 0)}
+                                {formatCurrency(session.revenueBreakdown?.UPI || session.revenueBreakdown?.upi || 0)}
                               </p>
                             </div>
                             <div className="bg-gray-900 rounded-lg p-3">
                               <p className="text-xs text-gray-400 mb-1">FASTag Revenue</p>
                               <p className="text-lg font-bold text-purple-400">
-                                {formatCurrency(session.revenueBreakdown?.FASTAG || 0)}
+                                {formatCurrency(session.revenueBreakdown?.FASTAG || session.revenueBreakdown?.fastag || 0)}
                               </p>
                             </div>
                           </div>

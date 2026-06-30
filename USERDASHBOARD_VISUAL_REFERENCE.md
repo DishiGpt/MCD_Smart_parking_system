@@ -10,10 +10,10 @@
 │ 📍 Sorted by distance from your location                 │
 ├──────────────────────────────────────────────────────────┤
 │                                                          │
-│ ┌─────────────────────┐  ┌─────────────────────┐       │
-│ │ 🔵 Connaught Place  │  │ 🔵 India Gate Lot   │       │
-│ │         1.2 km      │  │      2.8 km         │       │
-│ │ Occ: 350/500 (70%)  │  │ Occ: 280/400 (70%) │       │
+│ ┌─────────────────────┐  ┌─────────────────────┐         │
+│ │ 🔵 Connaught Place  │  │ 🔵 India Gate Lot   │        │
+│ │         1.2 km      │  │      2.8 km         │         │
+│ │ Occ: 350/500 (70%)  │  │ Occ: 280/400 (70%) │          │
 │ │ ████████░░░░░░░░░░  │  │ ████████░░░░░░░░░░ │       │
 │ │ 150 spots available │  │ 120 spots available│       │
 │ │ ✓ Spaces Available  │  │ ✓ Spaces Available │       │

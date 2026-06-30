@@ -52,9 +52,9 @@ const AdminPortal = () => {
   const [deletingGuard, setDeletingGuard] = useState(null);
 
   // 🔄 REFRESH DATA (Fixed Logic)
-  const refreshData = useCallback(async () => {
+  const refreshData = useCallback(async (showLoader = false) => {
     try {
-      setLoading(true);
+      if (showLoader) setLoading(true);
       // ✅ FIX: Added 'trendsRes' to capture the 6th API call
       const [alertsRes, transactionsRes, , guardsRes, parkingLotsRes, trendsRes] = await Promise.all([
         axios.get(`${API_BASE}/alerts`),
@@ -79,13 +79,13 @@ const AdminPortal = () => {
       // Only show toast on first load to avoid spamming on auto-refresh
       if(!stats) toast.error('Failed to connect to server');
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
   }, [API_BASE, stats]);
 
   useEffect(() => {
-    refreshData();
-    const interval = setInterval(refreshData, 30000); // Refresh every 30 seconds
+    refreshData(true); // Show loader on initial mount
+    const interval = setInterval(() => refreshData(false), 30000); // Silent background refresh
     return () => clearInterval(interval);
   }, [refreshData]);
 
@@ -93,7 +93,7 @@ const AdminPortal = () => {
     try {
       await axios.patch(`${API_BASE}/alerts/${id}/resolve`);
       toast.success('Alert resolved');
-      refreshData();
+      refreshData(false); // Silent refresh
     } catch (error) {
       console.error('Error resolving alert:', error);
       toast.error('Failed to resolve alert');
@@ -123,7 +123,7 @@ const AdminPortal = () => {
       if (response.data.success) {
         toast.success(`Guard ${newGuard.name} added successfully!`);
         setNewGuard({ name: '', guardId: '', password: '', phoneNumber: '', assignedLot: '' });
-        refreshData();
+        refreshData(false);
       }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to add guard');
@@ -168,7 +168,7 @@ const AdminPortal = () => {
         setShowEditModal(false);
         setEditingGuard(null);
         setEditForm({ name: '', phoneNumber: '', assignedLot: '', password: '' });
-        refreshData();
+        refreshData(false);
       }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update guard');
@@ -191,7 +191,7 @@ const AdminPortal = () => {
         toast.success(`Guard ${deletingGuard.name} deleted successfully`);
         setShowDeleteModal(false);
         setDeletingGuard(null);
-        refreshData();
+        refreshData(false);
       }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to delete guard');

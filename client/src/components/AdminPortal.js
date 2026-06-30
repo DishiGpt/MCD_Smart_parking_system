@@ -28,7 +28,6 @@ const AdminPortal = () => {
 
   // Staff Management State
   const [guards, setGuards] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [newGuard, setNewGuard] = useState({
     name: '',
@@ -55,7 +54,7 @@ const AdminPortal = () => {
   // 🔄 REFRESH DATA (Fixed Logic)
   const refreshData = useCallback(async (showLoader = false) => {
     try {
-      if (showLoader) setLoading(true);
+      if (showLoader) setActionLoading(true);
       // ✅ FIX: Added 'trendsRes' to capture the 6th API call
       const [alertsRes, transactionsRes, , guardsRes, parkingLotsRes, trendsRes] = await Promise.all([
         axios.get(`${API_BASE}/alerts`),
@@ -80,7 +79,7 @@ const AdminPortal = () => {
       // Only show toast on first load to avoid spamming on auto-refresh
       if(!stats) toast.error('Failed to connect to server');
     } finally {
-      if (showLoader) setLoading(false);
+      if (showLoader) setActionLoading(false);
     }
   }, [API_BASE, stats]);
 

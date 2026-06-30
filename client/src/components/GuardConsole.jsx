@@ -2,16 +2,19 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Webcam from 'react-webcam';
 import Tesseract from 'tesseract.js';
 import { toast } from 'react-toastify';
+import { useNavigate } from 'react-router-dom';
 import GuardAuth from './GuardAuth';
 import { useAuth } from '../context/AuthContext';
 
 const GuardConsole = () => {
   const { login, logout } = useAuth();
+  const navigate = useNavigate();
   // Session Management
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sessionData, setSessionData] = useState(null);
   const [showEndShiftModal, setShowEndShiftModal] = useState(false);
   const [closingCash, setClosingCash] = useState('');
+  const [latestSessionDetails, setLatestSessionDetails] = useState(null);
   
   const webcamRef = useRef(null);
   const [isScanning, setIsScanning] = useState(true);
@@ -370,6 +373,22 @@ const GuardConsole = () => {
     }
   };
 
+  const handleOpenEndShiftModal = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/guard/active-session/${guardName}`);
+      const data = await response.json();
+      if (data.success && data.hasActiveSession && data.session) {
+        setLatestSessionDetails(data.session);
+      }
+    } catch (err) {
+      console.error('Error fetching session details for end shift:', err);
+    } finally {
+      setLoading(false);
+      setShowEndShiftModal(true);
+    }
+  };
+
   const handleEndShift = async (e) => {
     e.preventDefault();
     
@@ -413,6 +432,8 @@ const GuardConsole = () => {
           localStorage.removeItem('guardSession');
           // Clear AuthContext
           logout();
+          // Redirect to central login page
+          navigate('/login');
         }, 2000);
       } else {
         toast.error(data.message);
@@ -447,7 +468,7 @@ const GuardConsole = () => {
               <p className="font-mono text-lg font-bold">{parkingLot}</p>
             </div>
             <button
-              onClick={() => setShowEndShiftModal(true)}
+              onClick={handleOpenEndShiftModal}
               className="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-lg font-bold transition-all shadow-lg"
             >
               END SHIFT
@@ -748,17 +769,37 @@ const GuardConsole = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-400">Opening Cash:</span>
-                  <span className="font-bold text-green-400">₹{sessionData?.openingCash || 0}</span>
+                  <span className="font-bold text-green-400">₹{latestSessionDetails?.openingCash || sessionData?.openingCash || 0}</span>
+                </div>
+                <div className="flex justify-between border-t border-gray-700 pt-2 text-xs">
+                  <span className="text-gray-400">CASH Collected:</span>
+                  <span className="font-bold text-blue-400">₹{latestSessionDetails?.currentCashExpected || 0}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-400">Expected UPI:</span>
+                  <span className="font-bold text-indigo-400">₹{latestSessionDetails?.upiCollected || 0}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-400">Expected FASTag:</span>
+                  <span className="font-bold text-purple-400">₹{latestSessionDetails?.fastagCollected || 0}</span>
+                </div>
+                <div className="flex justify-between border-t border-gray-700 pt-2 font-bold">
+                  <span className="text-white">Expected Closing Cash:</span>
+                  <span className="text-yellow-400">
+                    ₹{(latestSessionDetails?.openingCash || sessionData?.openingCash || 0) + (latestSessionDetails?.currentCashExpected || 0)}
+                  </span>
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-gray-300 mb-2">Closing Cash Balance</label>
+                <label className="block text-sm font-bold text-gray-300 mb-2">
+                  Actual Closing Cash in Drawer (Must match ₹{(latestSessionDetails?.openingCash || sessionData?.openingCash || 0) + (latestSessionDetails?.currentCashExpected || 0)})
+                </label>
                 <input
                   type="number"
                   value={closingCash}
                   onChange={(e) => setClosingCash(e.target.value)}
-                  placeholder="Enter actual cash in drawer"
+                  placeholder={`Enter ₹${(latestSessionDetails?.openingCash || sessionData?.openingCash || 0) + (latestSessionDetails?.currentCashExpected || 0)} to close`}
                   step="0.01"
                   min="0"
                   className="w-full bg-gray-800 border-2 border-gray-600 text-white px-4 py-3 rounded-lg font-mono text-lg focus:outline-none focus:border-red-500 placeholder-gray-500"

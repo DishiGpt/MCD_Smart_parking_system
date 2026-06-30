@@ -1192,6 +1192,12 @@ app.get('/api/guard/active-session/:guardId', async (req, res) => {
     const cashCollected = transactions
       .filter(tx => tx.paymentMode === 'CASH' && tx.status === 'COMPLETED')
       .reduce((sum, tx) => sum + tx.fee, 0);
+    const upiCollected = transactions
+      .filter(tx => tx.paymentMode === 'UPI' && tx.status === 'COMPLETED')
+      .reduce((sum, tx) => sum + tx.fee, 0);
+    const fastagCollected = transactions
+      .filter(tx => tx.paymentMode === 'FASTAG' && tx.status === 'COMPLETED')
+      .reduce((sum, tx) => sum + tx.fee, 0);
 
     res.json({
       success: true,
@@ -1203,6 +1209,8 @@ app.get('/api/guard/active-session/:guardId', async (req, res) => {
         startTime: session.startTime,
         openingCash: session.openingCash,
         currentCashExpected: cashCollected,
+        upiCollected,
+        fastagCollected,
         transactionCount: transactions.length,
         systemHealthAtStart: session.systemHealthAtStart
       }

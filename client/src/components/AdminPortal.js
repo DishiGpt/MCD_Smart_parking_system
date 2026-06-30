@@ -29,6 +29,7 @@ const AdminPortal = () => {
   // Staff Management State
   const [guards, setGuards] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [newGuard, setNewGuard] = useState({
     name: '',
     guardId: '',
@@ -110,7 +111,7 @@ const AdminPortal = () => {
     }
 
     try {
-      setLoading(true);
+      setActionLoading(true);
       const response = await axios.post(`${API_BASE}/guards`, {
         guardId: newGuard.guardId,
         name: newGuard.name,
@@ -128,7 +129,7 @@ const AdminPortal = () => {
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to add guard');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -151,7 +152,7 @@ const AdminPortal = () => {
     }
 
     try {
-      setLoading(true);
+      setActionLoading(true);
       const updateData = {
         name: editForm.name,
         phoneNumber: editForm.phoneNumber,
@@ -173,7 +174,7 @@ const AdminPortal = () => {
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update guard');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -185,7 +186,7 @@ const AdminPortal = () => {
   const handleDeleteConfirm = async () => {
     if (!deletingGuard) return;
     try {
-      setLoading(true);
+      setActionLoading(true);
       const response = await axios.delete(`${API_BASE}/guards/${deletingGuard._id}`);
       if (response.data.success) {
         toast.success(`Guard ${deletingGuard.name} deleted successfully`);
@@ -196,7 +197,7 @@ const AdminPortal = () => {
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to delete guard');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -278,7 +279,7 @@ const AdminPortal = () => {
                 </select>
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={actionLoading}
                   className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <UserPlus size={18} /> Add

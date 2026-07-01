@@ -129,9 +129,9 @@ export default function App() {
 
   // 2. Fetch Data
   useEffect(() => {
-    const fetchParkingLots = async () => {
+    const fetchParkingLots = async (showLoader = false) => {
       try {
-        setLoading(true);
+        if (showLoader) setLoading(true);
         setError(null);
 
         console.log(`Fetching from: ${API_URL}/api/parking-lots`);
@@ -151,12 +151,14 @@ export default function App() {
         setError('Showing Demo Data (Offline Mode)');
         setParkingLots(DUMMY_PARKING_DATA);
       } finally {
-        setLoading(false);
+        if (showLoader) setLoading(false);
       }
     };
 
     if (userLocation) {
-      fetchParkingLots();
+      fetchParkingLots(true); // initial fetch with loader
+      const interval = setInterval(() => fetchParkingLots(false), 30000); // silent background fetch
+      return () => clearInterval(interval);
     }
   }, [userLocation]);
 
@@ -238,8 +240,8 @@ export default function App() {
         {/* List */}
         <View style={styles.lotsContainer}>
           {filteredLots.map((lot) => {
-            const cap = lot.totalCapacity || lot.capacity || 100;
-            const occ = lot.currentOccupancy || lot.occupied || 0;
+            const cap = lot.capacity || lot.totalCapacity || 100;
+            const occ = lot.currentOccupancy || lot.occupancy || lot.occupied || 0;
             const pct = getOccupancyPercentage(occ, cap);
             const color = getOccupancyColor(occ, cap);
             const bg = getOccupancyBg(occ, cap);

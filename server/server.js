@@ -1569,6 +1569,22 @@ app.patch('/api/reports/:id', async (req, res) => {
   }
 });
 
+// 24. DELETE /api/reports/:id - Delete a user complaint/report
+app.delete('/api/reports/:id', async (req, res) => {
+  try {
+    const report = await Report.findByIdAndDelete(req.params.id);
+    if (!report) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
+    res.json({
+      success: true,
+      message: 'Report deleted successfully'
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 
 
 // ==================== DEPLOYMENT CONFIG ====================

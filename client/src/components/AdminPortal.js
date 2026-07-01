@@ -30,9 +30,8 @@ const AdminPortal = () => {
   // Reports state
   const [reports, setReports] = useState([]);
   const [reportFilter, setReportFilter] = useState('all');
-  const [showReplyModal, setShowReplyModal] = useState(false);
-  const [activeReport, setActiveReport] = useState(null);
-  const [replyText, setReplyText] = useState('');
+  const [showDeleteReportModal, setShowDeleteReportModal] = useState(false);
+  const [deletingReport, setDeletingReport] = useState(null);
 
   // Staff Management State
   const [guards, setGuards] = useState([]);
@@ -113,27 +112,25 @@ const AdminPortal = () => {
     }
   };
 
-  const handleOpenReplyModal = (report) => {
-    setActiveReport(report);
-    setReplyText(report.adminReply || '');
-    setShowReplyModal(true);
+  const handleOpenDeleteReportModal = (report) => {
+    setDeletingReport(report);
+    setShowDeleteReportModal(true);
   };
 
-  const handleSubmitReply = async () => {
-    if (!activeReport) return;
+  const handleDeleteReportConfirm = async () => {
+    if (!deletingReport) return;
     try {
-      await axios.patch(`${API_BASE}/reports/${activeReport._id}`, {
-        adminReply: replyText,
-        status: activeReport.status === 'PENDING' ? 'IN_REVIEW' : activeReport.status
-      });
-      toast.success('Reply submitted successfully');
-      setShowReplyModal(false);
-      setActiveReport(null);
-      setReplyText('');
+      setActionLoading(true);
+      await axios.delete(`${API_BASE}/reports/${deletingReport._id}`);
+      toast.success('Complaint deleted successfully');
+      setShowDeleteReportModal(false);
+      setDeletingReport(null);
       refreshData(false);
     } catch (error) {
-      console.error('Error submitting reply:', error);
-      toast.error('Failed to submit reply');
+      console.error('Error deleting report:', error);
+      toast.error('Failed to delete complaint');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -419,7 +416,6 @@ const AdminPortal = () => {
                       <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase">Complaint Message</th>
                       <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase">User Details</th>
                       <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase">Status</th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase">Admin Reply</th>
                       <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase">Actions</th>
                     </tr>
                   </thead>
@@ -457,9 +453,6 @@ const AdminPortal = () => {
                               {report.status}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-sm text-slate-500 max-w-xs truncate" title={report.adminReply}>
-                            {report.adminReply || <span className="text-slate-400 italic">No reply yet</span>}
-                          </td>
                           <td className="px-6 py-4 space-y-1 text-xs">
                             {report.status !== 'RESOLVED' && (
                               <button
@@ -478,17 +471,17 @@ const AdminPortal = () => {
                               </button>
                             )}
                             <button
-                              onClick={() => handleOpenReplyModal(report)}
-                              className="block w-full text-left text-slate-600 hover:text-slate-800 font-bold"
+                              onClick={() => handleOpenDeleteReportModal(report)}
+                              className="block w-full text-left text-red-600 hover:text-red-800 font-bold"
                             >
-                              ✉ Reply
+                              🗑 Delete
                             </button>
                           </td>
                         </tr>
                       ))}
                     {reports.filter(r => reportFilter === 'all' || r.status === reportFilter).length === 0 && (
                       <tr>
-                        <td colSpan="7" className="text-center py-8 text-slate-400">
+                        <td colSpan="6" className="text-center py-8 text-slate-400">
                           No reports found matching filter
                         </td>
                       </tr>
@@ -755,42 +748,36 @@ const AdminPortal = () => {
            </div>
         </div>
       )}
-      {/* Reply Modal */}
-      {showReplyModal && activeReport && (
+      {/* Delete Report Confirmation Modal */}
+      {showDeleteReportModal && deletingReport && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4 text-left">
-            <h3 className="text-lg font-bold text-slate-800">Reply to User Report</h3>
-            <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 text-sm space-y-1">
-              <p className="text-slate-500 text-xs font-semibold">Lot: {activeReport.parkingLotName}</p>
-              <p className="text-slate-500 text-xs font-semibold">Category: {activeReport.category}</p>
-              <p className="text-slate-800 italic font-mono mt-1">"{activeReport.message}"</p>
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Admin Reply/Action Message</label>
-              <textarea
-                value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-                placeholder="Type response or steps taken..."
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 h-24 text-slate-800"
-              />
+          <div className="bg-white rounded-xl border border-slate-200 shadow-2xl max-w-md w-full p-6 text-left">
+            <h3 className="text-lg font-bold text-red-600 mb-2 flex items-center gap-2">
+              <AlertTriangle size={20} />
+              Confirm Delete Complaint
+            </h3>
+            <p className="text-slate-600 text-sm mb-4">
+              Are you sure you want to permanently delete the complaint from lot <span className="font-bold text-slate-800">"{deletingReport.parkingLotName}"</span>?
+            </p>
+            <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 text-xs text-slate-500 font-mono mb-4">
+              <p>Category: {deletingReport.category}</p>
+              <p className="mt-1 text-slate-700 italic">"{deletingReport.message}"</p>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  setShowReplyModal(false);
-                  setActiveReport(null);
-                  setReplyText('');
+                  setShowDeleteReportModal(false);
+                  setDeletingReport(null);
                 }}
                 className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2 rounded-lg text-sm transition-all"
               >
                 Cancel
               </button>
               <button
-                onClick={handleSubmitReply}
-                disabled={!replyText.trim()}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg text-sm disabled:opacity-50 transition-all"
+                onClick={handleDeleteReportConfirm}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg text-sm transition-all"
               >
-                Send Reply
+                Delete Complaint
               </button>
             </div>
           </div>

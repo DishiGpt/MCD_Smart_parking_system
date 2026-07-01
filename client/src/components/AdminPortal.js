@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { 
   AlertTriangle, IndianRupee, Car, BarChart3, 
-  Bell, Shield, UserPlus, Users, Edit2, Trash2 
+  Bell, Shield, UserPlus, Users, Edit2, Trash2,
+  FileText
 } from 'lucide-react';
 import axios from 'axios';
 import { 
@@ -22,9 +23,16 @@ const AdminPortal = () => {
   const [transactions, setTransactions] = useState([]);
   const [showScanner, setShowScanner] = useState(false);
   const [scannerMode] = useState('ENTRY');
-  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'guards' | 'staff'
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'guards' | 'staff' | 'reports'
   const [parkingLots, setParkingLots] = useState([]);
   const [chartData, setChartData] = useState([]);
+
+  // Reports state
+  const [reports, setReports] = useState([]);
+  const [reportFilter, setReportFilter] = useState('all');
+  const [showReplyModal, setShowReplyModal] = useState(false);
+  const [activeReport, setActiveReport] = useState(null);
+  const [replyText, setReplyText] = useState('');
 
   // Staff Management State
   const [guards, setGuards] = useState([]);
@@ -57,14 +65,15 @@ const AdminPortal = () => {
   const refreshData = useCallback(async (showLoader = false) => {
     try {
       if (showLoader) setActionLoading(true);
-      // ✅ FIX: Added 'trendsRes' to capture the 6th API call
-      const [alertsRes, transactionsRes, , guardsRes, parkingLotsRes, trendsRes] = await Promise.all([
+      // ✅ FIX: Added 'trendsRes' to capture the 6th API call, and reportsRes for complaints
+      const [alertsRes, transactionsRes, , guardsRes, parkingLotsRes, trendsRes, reportsRes] = await Promise.all([
         axios.get(`${API_BASE}/alerts`),
         axios.get(`${API_BASE}/transactions`),
         axios.get(`${API_BASE}/status`),
         axios.get(`${API_BASE}/guards`),
         axios.get(`${API_BASE}/parking-lots`),
-        axios.get(`${API_BASE}/occupancy-trends`) // This was missing in the variable list
+        axios.get(`${API_BASE}/occupancy-trends`),
+        axios.get(`${API_BASE}/reports`)
       ]);
       
       setAlerts(alertsRes.data.alerts || []);
@@ -72,6 +81,7 @@ const AdminPortal = () => {
       setStats(transactionsRes.data.stats || {});
       setGuards(guardsRes.data.guards || []);
       setParkingLots(parkingLotsRes.data.parkingLots || []);
+      setReports(reportsRes.data.reports || []);
       
       // ✅ FIX: Set the chart data correctly
       setChartData(trendsRes.data.trends || []);
@@ -91,6 +101,41 @@ const AdminPortal = () => {
     const interval = setInterval(() => refreshData(false), 30000); // Silent background refresh
     return () => clearInterval(interval);
   }, [refreshData]);
+
+  const handleUpdateReportStatus = async (id, status) => {
+    try {
+      await axios.patch(`${API_BASE}/reports/${id}`, { status });
+      toast.success(`Complaint status updated to ${status}`);
+      refreshData(false);
+    } catch (error) {
+      console.error('Error updating report status:', error);
+      toast.error('Failed to update status');
+    }
+  };
+
+  const handleOpenReplyModal = (report) => {
+    setActiveReport(report);
+    setReplyText(report.adminReply || '');
+    setShowReplyModal(true);
+  };
+
+  const handleSubmitReply = async () => {
+    if (!activeReport) return;
+    try {
+      await axios.patch(`${API_BASE}/reports/${activeReport._id}`, {
+        adminReply: replyText,
+        status: activeReport.status === 'PENDING' ? 'IN_REVIEW' : activeReport.status
+      });
+      toast.success('Reply submitted successfully');
+      setShowReplyModal(false);
+      setActiveReport(null);
+      setReplyText('');
+      refreshData(false);
+    } catch (error) {
+      console.error('Error submitting reply:', error);
+      toast.error('Failed to submit reply');
+    }
+  };
 
   const handleResolve = async (id) => {
     try {
@@ -221,7 +266,7 @@ const AdminPortal = () => {
 
         {/* Tab Navigation */}
         <div className="mb-6 bg-white rounded-lg shadow-sm border border-slate-200 p-1 flex gap-2">
-          {['dashboard', 'guards', 'staff'].map(tab => (
+          {['dashboard', 'guards', 'staff', 'reports'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -234,7 +279,8 @@ const AdminPortal = () => {
               {tab === 'dashboard' && <BarChart3 size={18} />}
               {tab === 'guards' && <Shield size={18} />}
               {tab === 'staff' && <Users size={18} />}
-              {tab === 'guards' ? 'Guard Audit' : tab === 'staff' ? 'Staff Management' : tab}
+              {tab === 'reports' && <FileText size={18} />}
+              {tab === 'guards' ? 'Guard Audit' : tab === 'staff' ? 'Staff Management' : tab === 'reports' ? 'User Reports' : tab}
             </button>
           ))}
         </div>
@@ -336,6 +382,123 @@ const AdminPortal = () => {
         ) : activeTab === 'guards' ? (
           <GuardAuditPanel />
 
+        /* --- REPORTS TAB --- */
+        ) : activeTab === 'reports' ? (
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <FileText size={20} className="text-blue-500" />
+                  User Complaints & Reports
+                </h3>
+                {/* Status Filters */}
+                <div className="flex gap-2 bg-slate-100 p-1 rounded-lg text-xs">
+                  {['all', 'PENDING', 'IN_REVIEW', 'RESOLVED'].map(filter => (
+                    <button
+                      key={filter}
+                      onClick={() => setReportFilter(filter)}
+                      className={`px-3 py-1.5 rounded-md font-semibold capitalize transition-all ${
+                        reportFilter === filter
+                          ? 'bg-white text-slate-800 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-800'
+                      }`}
+                    >
+                      {filter}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Reports List */}
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase">Lot Name</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase">Category</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase">Complaint Message</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase">User Details</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase">Admin Reply</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {reports
+                      .filter(r => reportFilter === 'all' || r.status === reportFilter)
+                      .map(report => (
+                        <tr key={report._id}>
+                          <td className="px-6 py-4 font-bold text-slate-800">{report.parkingLotName}</td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                              report.category === 'Overcharge' ? 'bg-red-100 text-red-700' :
+                              report.category === 'Vehicle damage' ? 'bg-orange-100 text-orange-700' :
+                              report.category === 'Staff behavior' ? 'bg-purple-100 text-purple-700' :
+                              report.category === 'Payment issue' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-slate-100 text-slate-700'
+                            }`}>
+                              {report.category}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-600 max-w-xs truncate" title={report.message}>
+                            {report.message}
+                          </td>
+                          <td className="px-6 py-4 text-xs text-slate-500">
+                            {report.userName ? <p>👤 {report.userName}</p> : null}
+                            {report.userContact ? <p>📞 {report.userContact}</p> : null}
+                            {!report.userName && !report.userContact && <span className="text-slate-400">Anonymous</span>}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                              report.status === 'RESOLVED' ? 'bg-green-100 text-green-700' :
+                              report.status === 'IN_REVIEW' ? 'bg-blue-100 text-blue-700' :
+                              'bg-yellow-100 text-yellow-700'
+                            }`}>
+                              {report.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-500 max-w-xs truncate" title={report.adminReply}>
+                            {report.adminReply || <span className="text-slate-400 italic">No reply yet</span>}
+                          </td>
+                          <td className="px-6 py-4 space-y-1 text-xs">
+                            {report.status !== 'RESOLVED' && (
+                              <button
+                                onClick={() => handleUpdateReportStatus(report._id, 'RESOLVED')}
+                                className="block w-full text-left text-green-600 hover:text-green-800 font-bold"
+                              >
+                                ✓ Resolve
+                              </button>
+                            )}
+                            {report.status === 'PENDING' && (
+                              <button
+                                onClick={() => handleUpdateReportStatus(report._id, 'IN_REVIEW')}
+                                className="block w-full text-left text-blue-600 hover:text-blue-800 font-bold"
+                              >
+                                👁 Mark In Review
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleOpenReplyModal(report)}
+                              className="block w-full text-left text-slate-600 hover:text-slate-800 font-bold"
+                            >
+                              ✉ Reply
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    {reports.filter(r => reportFilter === 'all' || r.status === reportFilter).length === 0 && (
+                      <tr>
+                        <td colSpan="7" className="text-center py-8 text-slate-400">
+                          No reports found matching filter
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
         /* --- DASHBOARD TAB --- */
         ) : (
           <>
@@ -371,6 +534,43 @@ const AdminPortal = () => {
                   <div className="h-2 w-2 rounded-full bg-orange-400"></div>
                 </div>
                 <div className="text-2xl font-bold">{stats?.occupancyRate || 0}%</div>
+              </div>
+            </div>
+
+            {/* Reports Summary Row */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
+                <div>
+                  <span className="text-slate-500 text-sm font-medium">Total Complaints</span>
+                  <div className="text-2xl font-bold text-slate-800 mt-1">{reports.length}</div>
+                </div>
+                <div className="bg-slate-100 p-2.5 rounded-lg text-slate-600">
+                  <FileText size={20} />
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
+                <div>
+                  <span className="text-slate-500 text-sm font-medium">Pending Complaints</span>
+                  <div className="text-2xl font-bold text-yellow-600 mt-1">
+                    {reports.filter(r => r.status === 'PENDING').length}
+                  </div>
+                </div>
+                <div className="bg-yellow-50 p-2.5 rounded-lg text-yellow-600">
+                  <AlertTriangle size={20} />
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
+                <div>
+                  <span className="text-slate-500 text-sm font-medium">Unresolved Complaints</span>
+                  <div className="text-2xl font-bold text-red-600 mt-1">
+                    {reports.filter(r => r.status !== 'RESOLVED').length}
+                  </div>
+                </div>
+                <div className="bg-red-50 p-2.5 rounded-lg text-red-600">
+                  <AlertTriangle size={20} />
+                </div>
               </div>
             </div>
 
@@ -457,6 +657,60 @@ const AdminPortal = () => {
                 </div>
               </div>
             </div>
+
+            {/* Recent Reports List */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-8 mt-8">
+              <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                  <FileText size={18} className="text-blue-500" /> Recent User Complaints
+                </h3>
+                <button
+                  onClick={() => setActiveTab('reports')}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-bold"
+                >
+                  View All Reports
+                </button>
+              </div>
+              <div className="overflow-x-auto max-h-64">
+                <table className="w-full">
+                  <thead className="bg-slate-50 sticky top-0 text-left">
+                    <tr>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-600 uppercase">Lot</th>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-600 uppercase">Category</th>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-600 uppercase">Complaint Message</th>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-600 uppercase">Status</th>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-600 uppercase">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {reports.slice(0, 5).map(report => (
+                      <tr key={report._id}>
+                        <td className="px-6 py-4 font-bold text-sm">{report.parkingLotName}</td>
+                        <td className="px-6 py-4 text-xs font-semibold text-slate-600">{report.category}</td>
+                        <td className="px-6 py-4 text-sm text-slate-600 max-w-md truncate" title={report.message}>
+                          {report.message}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                            report.status === 'RESOLVED' ? 'bg-green-100 text-green-700' :
+                            report.status === 'IN_REVIEW' ? 'bg-blue-100 text-blue-700' :
+                            'bg-yellow-100 text-yellow-700'
+                          }`}>
+                            {report.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-xs text-slate-500">
+                          {new Date(report.createdAt).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                    {reports.length === 0 && (
+                      <tr><td colSpan="5" className="text-center py-4 text-slate-400">No complaints logged yet</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </>
         )}
       </div>
@@ -499,6 +753,47 @@ const AdminPortal = () => {
               <Scanner mode={scannerMode} onSuccess={() => { refreshData(); setShowScanner(false); }} />
               <button onClick={() => setShowScanner(false)} className="mt-4 w-full bg-gray-200 py-2 rounded">Close</button>
            </div>
+        </div>
+      )}
+      {/* Reply Modal */}
+      {showReplyModal && activeReport && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4 text-left">
+            <h3 className="text-lg font-bold text-slate-800">Reply to User Report</h3>
+            <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 text-sm space-y-1">
+              <p className="text-slate-500 text-xs font-semibold">Lot: {activeReport.parkingLotName}</p>
+              <p className="text-slate-500 text-xs font-semibold">Category: {activeReport.category}</p>
+              <p className="text-slate-800 italic font-mono mt-1">"{activeReport.message}"</p>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Admin Reply/Action Message</label>
+              <textarea
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                placeholder="Type response or steps taken..."
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 h-24 text-slate-800"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setShowReplyModal(false);
+                  setActiveReport(null);
+                  setReplyText('');
+                }}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2 rounded-lg text-sm transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitReply}
+                disabled={!replyText.trim()}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg text-sm disabled:opacity-50 transition-all"
+              >
+                Send Reply
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -9,6 +9,7 @@ const Transaction = require('./models/Transaction');
 const Alert = require('./models/Alert');
 const GuardSession = require('./models/GuardSession');
 const Guard = require('./models/Guard');
+const Report = require('./models/Report');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -1429,6 +1430,140 @@ app.get('/api/occupancy-trends', async (req, res) => {
     });
 
     res.json({ success: true, trends });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+
+
+// ==================== USER COMPLAINTS / REPORTING API ====================
+
+// 19. POST /api/reports - Create a user complaint/report
+app.post('/api/reports', async (req, res) => {
+  try {
+    const { parkingLotName, parkingLotId, userName, userContact, category, message } = req.body;
+    
+    if (!message || !message.trim()) {
+      return res.status(400).json({ success: false, message: 'Message is required and cannot be empty' });
+    }
+    
+    const allowedCategories = ['Overcharge', 'Slow service', 'Vehicle damage', 'Staff behavior', 'Payment issue', 'Other'];
+    if (!category || !allowedCategories.includes(category)) {
+      return res.status(400).json({ success: false, message: 'Valid category is required' });
+    }
+    
+    if (!parkingLotName || !parkingLotName.trim()) {
+      return res.status(400).json({ success: false, message: 'Parking lot name is required' });
+    }
+    
+    const report = new Report({
+      parkingLotName,
+      parkingLotId: parkingLotId || null,
+      userName: userName || '',
+      userContact: userContact || '',
+      category,
+      message,
+      status: 'PENDING',
+      adminReply: ''
+    });
+    
+    await report.save();
+    
+    res.status(201).json({
+      success: true,
+      message: 'Report submitted successfully',
+      report
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 20. GET /api/reports - Get all reports for admin
+app.get('/api/reports', async (req, res) => {
+  try {
+    const { parkingLot } = req.query;
+    let query = {};
+    if (parkingLot) {
+      query.parkingLotName = parkingLot;
+    }
+    const reports = await Report.find(query).sort({ createdAt: -1 });
+    res.json({
+      success: true,
+      reports
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 21. GET /api/reports/summary - Summary count of reports for dashboard
+app.get('/api/reports/summary', async (req, res) => {
+  try {
+    const total = await Report.countDocuments();
+    const pending = await Report.countDocuments({ status: 'PENDING' });
+    const inReview = await Report.countDocuments({ status: 'IN_REVIEW' });
+    const resolved = await Report.countDocuments({ status: 'RESOLVED' });
+    
+    res.json({
+      success: true,
+      summary: {
+        total,
+        pending,
+        inReview,
+        resolved,
+        unresolved: total - resolved
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 22. GET /api/reports/:id - Get single report details
+app.get('/api/reports/:id', async (req, res) => {
+  try {
+    const report = await Report.findById(req.params.id);
+    if (!report) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
+    res.json({
+      success: true,
+      report
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 23. PATCH /api/reports/:id - Update status and/or admin reply
+app.patch('/api/reports/:id', async (req, res) => {
+  try {
+    const { status, adminReply } = req.body;
+    const report = await Report.findById(req.params.id);
+    if (!report) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
+    
+    if (status) {
+      const allowedStatus = ['PENDING', 'IN_REVIEW', 'RESOLVED'];
+      if (!allowedStatus.includes(status)) {
+        return res.status(400).json({ success: false, message: 'Invalid status value' });
+      }
+      report.status = status;
+    }
+    
+    if (adminReply !== undefined) {
+      report.adminReply = adminReply;
+    }
+    
+    await report.save();
+    res.json({
+      success: true,
+      message: 'Report updated successfully',
+      report
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

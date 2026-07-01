@@ -37,6 +37,18 @@ const GuardConsole = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [pendingExitData, setPendingExitData] = useState(null);
 
+  // Success Countdown States
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [countdown, setCountdown] = useState(10);
+  const [successData, setSuccessData] = useState(null);
+  const countdownTimerRef = useRef(null);
+
+  // Entry Success Countdown States
+  const [entrySuccess, setEntrySuccess] = useState(false);
+  const [entrySuccessData, setEntrySuccessData] = useState(null);
+  const [entryCountdown, setEntryCountdown] = useState(10);
+  const entryCountdownTimerRef = useRef(null);
+
   const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
   // Extract session data (with defaults for hooks)
@@ -98,6 +110,53 @@ const GuardConsole = () => {
     restoreSession();
   }, [API_BASE, login]);
 
+  const startCountdown = (onComplete) => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+    }
+    setCountdown(10);
+    countdownTimerRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+          onComplete();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const startEntryCountdown = (onComplete) => {
+    if (entryCountdownTimerRef.current) {
+      clearInterval(entryCountdownTimerRef.current);
+    }
+    setEntryCountdown(10);
+    entryCountdownTimerRef.current = setInterval(() => {
+      setEntryCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(entryCountdownTimerRef.current);
+          entryCountdownTimerRef.current = null;
+          onComplete();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+      }
+      if (entryCountdownTimerRef.current) {
+        clearInterval(entryCountdownTimerRef.current);
+      }
+    };
+  }, []);
+
   const fetchScanHistory = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE}/scan-history?parkingLotName=${parkingLot}&limit=20`);
@@ -155,8 +214,13 @@ const GuardConsole = () => {
 
         if (data.success) {
           toast.success(`Vehicle ${plateNumber} Entry Logged`);
-          // Immediately fetch scan history after entry
-          fetchScanHistory();
+          setEntrySuccessData({ vehicleNumber: plateNumber });
+          setEntrySuccess(true);
+          startEntryCountdown(() => {
+            setEntrySuccess(false);
+            setEntrySuccessData(null);
+            fetchScanHistory();
+          });
           // Also fetch again after 1 second to ensure database updates are reflected
           setTimeout(() => fetchScanHistory(), 1000);
         } else {
@@ -271,10 +335,17 @@ const GuardConsole = () => {
 
       if (data.success) {
         toast.warning(`Manual Entry: ${manualVehicle.toUpperCase()} Logged (${manualReason})`);
+        const vehicleNum = manualVehicle.toUpperCase();
+        setEntrySuccessData({ vehicleNumber: vehicleNum });
         setManualVehicle('');
         setManualReason('CAMERA_GLITCH');
         setShowManualModal(false);
-        setTimeout(() => fetchScanHistory(), 1000);
+        setEntrySuccess(true);
+        startEntryCountdown(() => {
+          setEntrySuccess(false);
+          setEntrySuccessData(null);
+          fetchScanHistory();
+        });
       } else {
         toast.error(data.message);
       }
@@ -358,11 +429,21 @@ const GuardConsole = () => {
 
       if (data.success) {
         toast.success(`Vehicle ${pendingExitData.vehicleNumber} Exit - Fee: ₹${pendingExitData.fee} (${paymentMode})`);
-        setShowPaymentModal(false);
-        setPendingExitData(null);
+        setSuccessData({
+          vehicleNumber: pendingExitData.vehicleNumber,
+          fee: pendingExitData.fee,
+          paymentMode
+        });
         setManualExitVehicle('');
         setManualExitReason('CAMERA_GLITCH');
-        setTimeout(() => fetchScanHistory(), 1000);
+        setPaymentSuccess(true);
+        startCountdown(() => {
+          setPaymentSuccess(false);
+          setShowPaymentModal(false);
+          setPendingExitData(null);
+          setSuccessData(null);
+          fetchScanHistory();
+        });
       } else {
         toast.error(data.message);
       }
@@ -534,18 +615,33 @@ const GuardConsole = () => {
 
         <div className="w-96 flex flex-col gap-4 overflow-hidden">
           <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg border-2 border-green-500 p-4 shadow-lg">
-            <p className="text-xs text-gray-400 mb-2">LAST SCANNED VEHICLE</p>
-            {lastScanned ? (
-              <div className="space-y-2">
+            {entrySuccess && entrySuccessData ? (
+              <div className="space-y-3">
+                <p className="text-sm font-bold text-green-400 text-center">✅ Entry Successful</p>
                 <div className="bg-gray-700 px-4 py-3 rounded-lg border-2 border-green-500">
-                  <p className="text-4xl font-mono font-bold text-green-400">{lastScanned.number}</p>
+                  <p className="text-4xl font-mono font-bold text-green-400 text-center">{entrySuccessData.vehicleNumber}</p>
                 </div>
-                <p className="text-sm text-gray-300">{new Date(lastScanned.time).toLocaleTimeString()}</p>
+                <div className="text-center">
+                  <p className="text-xs text-yellow-400 font-semibold mb-1">Gate open</p>
+                  <p className="text-5xl font-bold text-white animate-pulse">{entryCountdown}</p>
+                </div>
               </div>
             ) : (
-              <div className="bg-gray-700 px-4 py-6 rounded-lg text-center text-gray-400">
-                <p className="text-lg">Waiting for scan...</p>
-              </div>
+              <>
+                <p className="text-xs text-gray-400 mb-2">LAST SCANNED VEHICLE</p>
+                {lastScanned ? (
+                  <div className="space-y-2">
+                    <div className="bg-gray-700 px-4 py-3 rounded-lg border-2 border-green-500">
+                      <p className="text-4xl font-mono font-bold text-green-400">{lastScanned.number}</p>
+                    </div>
+                    <p className="text-sm text-gray-300">{new Date(lastScanned.time).toLocaleTimeString()}</p>
+                  </div>
+                ) : (
+                  <div className="bg-gray-700 px-4 py-6 rounded-lg text-center text-gray-400">
+                    <p className="text-lg">Waiting for scan...</p>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -844,61 +940,92 @@ const GuardConsole = () => {
           <div className="bg-gray-900 rounded-xl border-2 border-yellow-500 shadow-2xl max-w-md w-full p-6">
             <h2 className="text-2xl font-bold text-yellow-500 mb-4">💰 Payment Collection</h2>
 
-            <div className="space-y-4">
-              <div className="bg-gray-800 px-6 py-4 rounded-lg">
-                <p className="text-gray-400 text-sm mb-2">Vehicle Number</p>
-                <p className="text-3xl font-mono font-bold text-white">{pendingExitData.vehicleNumber}</p>
-              </div>
-
-              <div className="bg-yellow-900/30 border-2 border-yellow-500 px-6 py-4 rounded-lg">
-                <p className="text-gray-400 text-sm mb-2">Parking Fee</p>
-                <p className="text-4xl font-bold text-yellow-400">₹{pendingExitData.fee}</p>
-              </div>
-
-              <div className="bg-gray-800 px-4 py-3 rounded-lg">
-                <p className="text-yellow-400 text-sm font-semibold mb-2">⚠️ Collect Payment Before Opening Gate</p>
-                <p className="text-gray-400 text-xs">Select payment method after receiving payment</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => handlePaymentConfirmed('CASH')}
-                  disabled={loading}
-                  className="bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-6 rounded-lg transition-all shadow-lg disabled:opacity-50 flex flex-col items-center gap-2"
-                >
-                  <span className="text-3xl">💵</span>
-                  <span>Cash Received</span>
-                </button>
-
-                <button
-                  onClick={() => handlePaymentConfirmed('UPI')}
-                  disabled={loading}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-lg transition-all shadow-lg disabled:opacity-50 flex flex-col items-center gap-2"
-                >
-                  <span className="text-3xl">📱</span>
-                  <span>UPI Verified</span>
-                </button>
-              </div>
-
-              <button
-                onClick={() => {
-                  setShowPaymentModal(false);
-                  setPendingExitData(null);
-                  setLoading(false);
-                }}
-                disabled={loading}
-                className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-
-              {loading && (
-                <div className="flex items-center justify-center gap-2 text-yellow-400">
-                  <div className="animate-spin border-2 border-gray-600 border-t-yellow-500 rounded-full w-5 h-5"></div>
-                  <span className="text-sm">Processing...</span>
+            {paymentSuccess && successData ? (
+              <div className="space-y-6 text-center py-4">
+                <div className="flex justify-center">
+                  <div className="w-16 h-16 bg-green-900/30 border-2 border-green-500 rounded-full flex items-center justify-center text-4xl animate-bounce">
+                    ✅
+                  </div>
                 </div>
-              )}
-            </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-green-500">Payment Successful</h3>
+                  <p className="text-gray-400 text-sm mt-1">Gate is opening...</p>
+                </div>
+                <div className="bg-gray-800 rounded-lg p-4 font-mono space-y-2 text-left">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Vehicle:</span>
+                    <span className="text-white font-bold">{successData.vehicleNumber}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Amount Paid:</span>
+                    <span className="text-green-400 font-bold">₹{successData.fee}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Method:</span>
+                    <span className="text-blue-400 font-bold">{successData.paymentMode}</span>
+                  </div>
+                </div>
+                <div className="text-sm text-gray-400">
+                  Closing automatically in <span className="font-bold text-white text-lg">{countdown}</span> seconds
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="bg-gray-800 px-6 py-4 rounded-lg">
+                  <p className="text-gray-400 text-sm mb-2">Vehicle Number</p>
+                  <p className="text-3xl font-mono font-bold text-white">{pendingExitData.vehicleNumber}</p>
+                </div>
+
+                <div className="bg-yellow-900/30 border-2 border-yellow-500 px-6 py-4 rounded-lg">
+                  <p className="text-gray-400 text-sm mb-2">Parking Fee</p>
+                  <p className="text-4xl font-bold text-yellow-400">₹{pendingExitData.fee}</p>
+                </div>
+
+                <div className="bg-gray-800 px-4 py-3 rounded-lg">
+                  <p className="text-yellow-400 text-sm font-semibold mb-2">⚠️ Collect Payment Before Opening Gate</p>
+                  <p className="text-gray-400 text-xs">Select payment method after receiving payment</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => handlePaymentConfirmed('CASH')}
+                    disabled={loading}
+                    className="bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-6 rounded-lg transition-all shadow-lg disabled:opacity-50 flex flex-col items-center gap-2"
+                  >
+                    <span className="text-3xl">💵</span>
+                    <span>Cash Received</span>
+                  </button>
+
+                  <button
+                    onClick={() => handlePaymentConfirmed('UPI')}
+                    disabled={loading}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-lg transition-all shadow-lg disabled:opacity-50 flex flex-col items-center gap-2"
+                  >
+                    <span className="text-3xl">📱</span>
+                    <span>UPI Verified</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setShowPaymentModal(false);
+                    setPendingExitData(null);
+                    setLoading(false);
+                  }}
+                  disabled={loading}
+                  className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+
+                {loading && (
+                  <div className="flex items-center justify-center gap-2 text-yellow-400">
+                    <div className="animate-spin border-2 border-gray-600 border-t-yellow-500 rounded-full w-5 h-5"></div>
+                    <span className="text-sm">Processing...</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

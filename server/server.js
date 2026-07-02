@@ -96,6 +96,30 @@ async function initializeDatabase() {
         console.log(`     📍 ${lot} | 📞 ${g.phoneNumber}`);
       });
     }
+
+    // Ensure "Rajouri Garden Metro Parking" has capacity = 1 for demo
+    const rajouriLot = await ParkingLot.findOne({ name: 'Rajouri Garden Metro Parking' });
+    if (rajouriLot) {
+      if (rajouriLot.capacity !== 1) {
+        rajouriLot.capacity = 1;
+        await rajouriLot.save();
+        console.log('🔧 Demo Config: Set Rajouri Garden Metro Parking capacity to 1');
+      }
+    } else {
+      // If it doesn't exist, create it with capacity 1
+      await ParkingLot.create({
+        name: 'Rajouri Garden Metro Parking',
+        capacity: 1,
+        currentOccupancy: 0,
+        location: {
+          latitude: 28.6410,
+          longitude: 77.1215,
+          address: 'Rajouri Garden Metro Station, West Delhi'
+        },
+        status: 'AVAILABLE'
+      });
+      console.log('🔧 Demo Config: Created Rajouri Garden Metro Parking with capacity 1');
+    }
   } catch (error) {
     console.error('Error initializing database:', error);
   }

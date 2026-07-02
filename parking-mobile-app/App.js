@@ -81,7 +81,9 @@ const getOccupancyBg = (occupancy, capacity) => {
 
 const getStatusBadge = (occupancy, capacity) => {
   const percentage = getOccupancyPercentage(occupancy, capacity);
-  if (percentage < 70) {
+  if (percentage >= 100) {
+    return { text: '🚫 FULL — Overparked', icon: '✕', color: '#dc2626' };
+  } else if (percentage < 70) {
     return { text: 'Spaces Available', icon: '✓', color: '#059669' };
   } else if (percentage < 90) {
     return { text: 'Getting Full', icon: '⚠', color: '#b45309' };
@@ -330,7 +332,7 @@ export default function App() {
 
                   {/* Progress Bar */}
                   <View style={styles.progressBarContainer}>
-                    <View style={[styles.progressBar, { width: `${pct}%`, backgroundColor: color }]} />
+                    <View style={[styles.progressBar, { width: `${Math.min(pct, 100)}%`, backgroundColor: pct >= 100 ? '#dc2626' : color }]} />
                   </View>
 
                   {/* Status Text */}
@@ -343,10 +345,16 @@ export default function App() {
                   {/* Action Buttons */}
                   <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
                     <TouchableOpacity
-                      style={[styles.navigateButton, { flex: 1, marginTop: 0 }]}
+                      style={[
+                        styles.navigateButton,
+                        { flex: 1, marginTop: 0 },
+                        pct >= 100 && { backgroundColor: '#9ca3af' }
+                      ]}
                       onPress={() => handleNavigate(lot.latitude, lot.longitude, lot.name)}
                     >
-                      <Text style={styles.navigateButtonText}>📍 Navigate</Text>
+                      <Text style={styles.navigateButtonText}>
+                        {pct >= 100 ? 'Lot Full — Navigate Anyway' : '📍 Navigate'}
+                      </Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity

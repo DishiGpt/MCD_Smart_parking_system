@@ -111,7 +111,7 @@ async function initParkingLots() {
       },
       { 
         name: 'Rajouri Garden Metro Parking', 
-        capacity: 100, 
+        capacity: 1, 
         currentOccupancy: 0,
         location: {
           latitude: 28.6410,

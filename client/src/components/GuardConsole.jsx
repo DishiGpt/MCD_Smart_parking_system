@@ -32,6 +32,9 @@ const GuardConsole = () => {
 
   // Camera Health (OCR-independent)
   const [cameraStatus, setCameraStatus] = useState('INITIALIZING');
+
+  // Parking Lot Capacity Details
+  const [lotDetails, setLotDetails] = useState(null);
   
   // Payment Modal for Exit
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -157,6 +160,21 @@ const GuardConsole = () => {
     };
   }, []);
 
+  const fetchLotDetails = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/parking-lots`);
+      const data = await response.json();
+      if (data.success && data.parkingLots) {
+        const currentLot = data.parkingLots.find(lot => lot.name === parkingLot);
+        if (currentLot) {
+          setLotDetails(currentLot);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching parking lot details:', error);
+    }
+  }, [parkingLot, API_BASE]);
+
   const fetchScanHistory = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE}/scan-history?parkingLotName=${parkingLot}&limit=20`);
@@ -171,9 +189,13 @@ const GuardConsole = () => {
 
   useEffect(() => {
     fetchScanHistory();
-    const intervalId = setInterval(fetchScanHistory, 5000);
+    fetchLotDetails();
+    const intervalId = setInterval(() => {
+      fetchScanHistory();
+      fetchLotDetails();
+    }, 5000);
     return () => clearInterval(intervalId);
-  }, [fetchScanHistory]);
+  }, [fetchScanHistory, fetchLotDetails]);
 
   // Manual entry is ALWAYS enabled to handle muddy plates and edge cases
 
@@ -220,14 +242,20 @@ const GuardConsole = () => {
             setEntrySuccess(false);
             setEntrySuccessData(null);
             fetchScanHistory();
+            fetchLotDetails();
           });
+          fetchLotDetails();
           // Also fetch again after 1 second to ensure database updates are reflected
-          setTimeout(() => fetchScanHistory(), 1000);
+          setTimeout(() => {
+            fetchScanHistory();
+            fetchLotDetails();
+          }, 1000);
         } else {
           // Show error with more context
           toast.error(`${plateNumber}: ${data.message}`);
           // Still refresh scan history to show current state
           fetchScanHistory();
+          fetchLotDetails();
         }
       } else {
         // For EXIT, first calculate fee then show payment modal
@@ -253,7 +281,7 @@ const GuardConsole = () => {
     } finally {
       setLoading(false);
     }
-  }, [mode, parkingLot, API_BASE, fetchScanHistory, sessionId]);
+  }, [mode, parkingLot, API_BASE, fetchScanHistory, fetchLotDetails, sessionId]);
 
   const scanPlate = useCallback(async () => {
     try {
@@ -345,9 +373,17 @@ const GuardConsole = () => {
           setEntrySuccess(false);
           setEntrySuccessData(null);
           fetchScanHistory();
+          fetchLotDetails();
         });
+        fetchLotDetails();
+        setTimeout(() => {
+          fetchScanHistory();
+          fetchLotDetails();
+        }, 1000);
       } else {
         toast.error(data.message);
+        fetchScanHistory();
+        fetchLotDetails();
       }
     } catch (error) {
       toast.error(`Error: ${error.message}`);
@@ -443,9 +479,17 @@ const GuardConsole = () => {
           setPendingExitData(null);
           setSuccessData(null);
           fetchScanHistory();
+          fetchLotDetails();
         });
+        fetchLotDetails();
+        setTimeout(() => {
+          fetchScanHistory();
+          fetchLotDetails();
+        }, 1000);
       } else {
         toast.error(data.message);
+        fetchScanHistory();
+        fetchLotDetails();
       }
     } catch (error) {
       toast.error(`Error: ${error.message}`);
@@ -531,6 +575,8 @@ const GuardConsole = () => {
     return <GuardAuth onLoginSuccess={handleLoginSuccess} />;
   }
 
+  const isFull = lotDetails && (lotDetails.capacity - lotDetails.currentOccupancy) <= 0;
+
   return (
     <div className="w-full h-screen bg-gray-900 text-white flex flex-col">
       <div className="bg-gray-800 border-b-2 border-red-500 p-4 shadow-lg">
@@ -548,15 +594,40 @@ const GuardConsole = () => {
               <p className="text-xs text-gray-300">Parking Lot</p>
               <p className="font-mono text-lg font-bold">{parkingLot}</p>
             </div>
+            {lotDetails && (
+              <div className={`px-4 py-1.5 rounded-lg flex flex-col justify-center min-w-[140px] ${
+                isFull 
+                  ? 'bg-red-600 text-white font-bold border border-red-800 animate-pulse' 
+                  : ((lotDetails.capacity - lotDetails.currentOccupancy) / lotDetails.capacity) <= 0.20 
+                    ? 'bg-yellow-500 text-yellow-950 font-semibold border border-yellow-600' 
+                    : 'bg-green-600 text-white font-semibold border border-green-700'
+              }`}>
+                <div className="text-[9px] uppercase tracking-wider text-center font-bold">
+                  {isFull ? '🚫 FULL — NO ENTRY' : 'Capacity'}
+                </div>
+                <div className="font-mono text-xs text-center leading-tight">
+                  Capacity: {lotDetails.currentOccupancy} / {lotDetails.capacity}
+                </div>
+                <div className="font-mono text-xs text-center font-bold leading-tight">
+                  Slots Left: {lotDetails.capacity - lotDetails.currentOccupancy}
+                </div>
+              </div>
+            )}
             <button
               onClick={handleOpenEndShiftModal}
-              className="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-lg font-bold transition-all shadow-lg"
+              className="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-lg font-bold transition-all shadow-lg text-sm"
             >
               END SHIFT
             </button>
           </div>
         </div>
       </div>
+
+      {isFull && (
+        <div className="bg-red-600 text-white text-center py-2 font-bold text-sm border-b border-red-800 animate-pulse flex items-center justify-center gap-2">
+          <span>🚫 PARKING FULL — Entries Blocked</span>
+        </div>
+      )}
 
       <div className="flex-1 flex gap-4 p-4 overflow-hidden">
         <div className="flex-1 flex flex-col bg-black rounded-lg overflow-hidden border-2 border-gray-700 shadow-2xl">
@@ -649,12 +720,19 @@ const GuardConsole = () => {
             <p className="text-xs text-gray-400 mb-2">SCANNER MODE</p>
             <div className="flex gap-2">
               <button
-                onClick={() => setMode('ENTRY')}
+                onClick={() => {
+                  setMode('ENTRY');
+                  if (isFull) {
+                    toast.warn("🚫 Parking is full! All vehicle entries will be rejected by the backend.", { autoClose: 5000 });
+                  }
+                }}
                 className={`flex-1 px-4 py-2 rounded-lg font-bold text-sm transition-all ${
-                  mode === 'ENTRY' ? 'bg-green-600 text-white shadow-lg' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  isFull 
+                    ? 'bg-gray-600 text-red-300 opacity-60 border border-red-500 cursor-not-allowed text-center'
+                    : mode === 'ENTRY' ? 'bg-green-600 text-white shadow-lg' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                 }`}
               >
-                ENTRY
+                ENTRY {isFull && '(FULL)'}
               </button>
               <button
                 onClick={() => setMode('EXIT')}
